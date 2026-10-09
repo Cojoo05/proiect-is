@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  postgres_db:
+    image: postgres:15
+    container_name: BD_proiect_nou
+    environment:
+      POSTGRES_USER: dev_user
+      POSTGRES_PASSWORD: "super_parola"
+      POSTGRES_DB: proiect_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - volum_nou_pg:/var/lib/postgresql/data
+
+volumes:
+  volum_nou_pg:
