@@ -9,6 +9,8 @@ function App() {
   
   const [sortConfig, setSortConfig] = useState({ key: 'id', direction: 'asc' });
   
+  const [expandedPasswords, setExpandedPasswords] = useState({});
+  
   const isAdmin = true; 
   const API_URL = 'http://localhost:8080/api/users';
 
@@ -72,12 +74,9 @@ function App() {
       body: JSON.stringify(dataToSend)
     })
     .then(async (res) => {
-      // NOU: Dacă Java dă o eroare (ex: 400 sau 500), o prindem aici!
       if (!res.ok) {
         throw new Error("Baza de date a respins salvarea! (Probabil email duplicat sau rol invalid). Verifică consola IntelliJ.");
       }
-      
-      // Dacă totul e ok, actualizăm tabelul
       fetchUsers();
       setFormData({ username: '', email: '', password: '', role: 'USER' });
       setEditingId(null);
@@ -97,11 +96,10 @@ function App() {
   };
 
   const handleEdit = (user) => {
-    setFormData({ username: user.username || '', email: user.email, password: user.password, role: user.role });
+    setFormData({ username: user.username || '', email: user.email, password: '', role: user.role });
     setEditingId(user.id);
   };
 
-  // --- ALG DE SORTARE ---
   const handleSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -120,12 +118,18 @@ function App() {
     return 0;
   });
 
-  // Sagetiile
   const getSortIndicator = (key) => {
     if (sortConfig.key === key) {
       return sortConfig.direction === 'asc' ? ' ↑' : ' ↓';
     }
     return '';
+  };
+
+  const togglePassword = (id) => {
+    setExpandedPasswords(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
   };
 
   // ==========================================
@@ -159,57 +163,60 @@ function App() {
   // VIEW 2: ADMIN PANEL
   // ==========================================
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
-      <button 
-        onClick={() => setCurrentView('dashboard')}
-        style={{ marginBottom: '20px', padding: '8px 15px', cursor: 'pointer', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '5px' }}
-      >
-        ⬅️ Back to Dashboard
-      </button>
+    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '1000px', margin: '0 auto' }}>
+      
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '20px' }}>
+        <button 
+          onClick={() => setCurrentView('dashboard')}
+          style={{ padding: '8px 15px', cursor: 'pointer', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '5px' }}
+        >
+          ⬅️ Back to Dashboard
+        </button>
+      </div>
 
-      <h1>Admin Panel - Manage Users</h1>
+      <h1 style={{ textAlign: 'center', marginBottom: '30px' }}>Admin Panel - Manage Users</h1>
 
       {isAdmin && (
-        <div style={{ border: '1px solid #ccc', padding: '15px', marginBottom: '20px', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
-          <h3>{editingId ? "Edit User" : "Add New User"}</h3>
-          <form onSubmit={handleSave} noValidate>
+        <div style={{ border: '1px solid #ddd', padding: '20px', marginBottom: '30px', borderRadius: '8px', backgroundColor: '#fdfdfd', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
+          <h3 style={{ marginTop: 0, textAlign: 'center', color: '#444' }}>{editingId ? "Edit User" : "Add New User"}</h3>
+          <form onSubmit={handleSave} noValidate style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '10px' }}>
             <input 
               type="text" 
               placeholder="Username" 
               value={formData.username}
               onChange={(e) => setFormData({...formData, username: e.target.value})}
-              style={{ marginRight: '10px', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+              style={{ padding: '10px', borderRadius: '4px', border: '1px solid #ccc', flex: '1', minWidth: '150px' }}
             />
             <input 
               type="email" 
               placeholder="Email" 
               value={formData.email}
               onChange={(e) => setFormData({...formData, email: e.target.value})}
-              style={{ marginRight: '10px', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+              style={{ padding: '10px', borderRadius: '4px', border: '1px solid #ccc', flex: '1', minWidth: '150px' }}
             />
             <input 
               type="password" 
               placeholder="Password" 
               value={formData.password}
               onChange={(e) => setFormData({...formData, password: e.target.value})}
-              style={{ marginRight: '10px', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+              style={{ padding: '10px', borderRadius: '4px', border: '1px solid #ccc', flex: '1', minWidth: '150px' }}
             />
             
             <select 
               value={formData.role} 
               onChange={(e) => setFormData({...formData, role: e.target.value})}
-              style={{ marginRight: '10px', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+              style={{ padding: '10px', borderRadius: '4px', border: '1px solid #ccc', flex: '0.5', minWidth: '100px' }}
             >
               <option value="USER">User</option>
-              <option value="ADMIN">Admin</option>
+              <option value="STUDENT">Student</option>
             </select>
             
-            <button type="submit" style={{ padding: '8px 15px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+            <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
               {editingId ? "Save" : "Add"}
             </button>
             
             {editingId && (
-              <button type="button" onClick={() => {setEditingId(null); setFormData({ username: '', email: '', password: '', role: 'USER' })}} style={{ marginLeft: '10px', padding: '8px 15px', cursor: 'pointer' }}>
+              <button type="button" onClick={() => {setEditingId(null); setFormData({ username: '', email: '', password: '', role: 'USER' })}} style={{ padding: '10px 15px', cursor: 'pointer', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff' }}>
                 Cancel
               </button>
             )}
@@ -217,47 +224,78 @@ function App() {
         </div>
       )}
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', backgroundColor: 'white' }}>
-        <thead>
-          <tr style={{ backgroundColor: '#f2f2f2' }}>
-            <th onClick={() => handleSort('id')} style={{ padding: '12px', borderBottom: '1px solid #ddd', cursor: 'pointer' }}>
-              ID{getSortIndicator('id')}
-            </th>
-            <th onClick={() => handleSort('username')} style={{ padding: '12px', borderBottom: '1px solid #ddd', cursor: 'pointer' }}>
-              Username{getSortIndicator('username')}
-            </th>
-            <th onClick={() => handleSort('email')} style={{ padding: '12px', borderBottom: '1px solid #ddd', cursor: 'pointer' }}>
-              Email{getSortIndicator('email')}
-            </th>
-            <th onClick={() => handleSort('password')} style={{ padding: '12px', borderBottom: '1px solid #ddd', cursor: 'pointer' }}>
-              Password{getSortIndicator('password')}
-            </th>
-            <th onClick={() => handleSort('role')} style={{ padding: '12px', borderBottom: '1px solid #ddd', cursor: 'pointer' }}>
-              Role{getSortIndicator('role')}
-            </th>
-            {isAdmin && <th style={{ padding: '12px', borderBottom: '1px solid #ddd' }}>Actions</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {sortedUsers.map(user => (
-            <tr key={user.id} style={{ borderBottom: '1px solid #ddd' }}>
-              <td style={{ padding: '12px' }}>{user.id}</td>
-              <td style={{ padding: '12px' }}>{user.username}</td>
-              <td style={{ padding: '12px' }}>{user.email}</td>
-              <td style={{ padding: '12px' }}>{user.password}</td>
-              <td style={{ padding: '12px' }}>{user.role}</td>
-              {isAdmin && (
-                <td style={{ padding: '12px' }}>
-                  <button onClick={() => handleEdit(user)} style={{ marginRight: '10px', cursor: 'pointer', padding: '5px 10px' }}>Edit</button>
-                  <button onClick={() => handleDelete(user.id)} style={{ color: 'white', backgroundColor: '#dc3545', border: 'none', cursor: 'pointer', padding: '5px 10px', borderRadius: '3px' }}>Delete</button>
-                </td>
-              )}
+      <div style={{ overflowX: 'auto', borderRadius: '8px', boxShadow: '0 0 10px rgba(0,0,0,0.05)', border: '1px solid #eee' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', backgroundColor: 'white', fontSize: '0.95rem' }}>
+          <thead>
+            <tr style={{ backgroundColor: '#f4f6f8', color: '#333' }}>
+              <th onClick={() => handleSort('id')} style={{ padding: '12px 15px', borderBottom: '2px solid #ddd', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                ID{getSortIndicator('id')}
+              </th>
+              <th onClick={() => handleSort('username')} style={{ padding: '12px 15px', borderBottom: '2px solid #ddd', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                Username{getSortIndicator('username')}
+              </th>
+              <th onClick={() => handleSort('email')} style={{ padding: '12px 15px', borderBottom: '2px solid #ddd', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                Email{getSortIndicator('email')}
+              </th>
+              <th onClick={() => handleSort('password')} style={{ padding: '12px 15px', borderBottom: '2px solid #ddd', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                Password{getSortIndicator('password')}
+              </th>
+              <th onClick={() => handleSort('role')} style={{ padding: '12px 15px', borderBottom: '2px solid #ddd', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                Role{getSortIndicator('role')}
+              </th>
+              {isAdmin && <th style={{ padding: '12px 15px', borderBottom: '2px solid #ddd', whiteSpace: 'nowrap' }}>Actions</th>}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sortedUsers.map(user => {
+              const isLongPassword = user.password && user.password.length > 25;
+              
+              return (
+                <tr key={user.id} style={{ borderBottom: '1px solid #eee', transition: 'background-color 0.2s' }}>
+                  <td style={{ padding: '12px 15px' }}>{user.id}</td>
+                  <td style={{ padding: '12px 15px' }}>{user.username}</td>
+                  <td style={{ padding: '12px 15px' }}>{user.email}</td>
+                  
+                  <td style={{ padding: '12px 15px', maxWidth: '200px', color: '#777' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ 
+                        flex: 1,
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: expandedPasswords[user.id] ? 'normal' : 'nowrap',
+                        wordBreak: expandedPasswords[user.id] ? 'break-all' : 'normal'
+                      }}>
+                        {user.password}
+                      </span>
+                      {isLongPassword && (
+                        <button 
+                          onClick={() => togglePassword(user.id)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', padding: '0', color: '#555' }}
+                          title={expandedPasswords[user.id] ? "Ascunde textul" : "Arată tot textul"}
+                        >
+                          {expandedPasswords[user.id] ? '▲' : '▼'}
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                  
+                  <td style={{ padding: '12px 15px', fontWeight: '500' }}>{user.role}</td>
+                  {isAdmin && (
+                    <td style={{ padding: '12px 15px' }}>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => handleEdit(user)} style={{ cursor: 'pointer', padding: '6px 12px', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', fontSize: '0.85rem' }}>Edit</button>
+                        <button onClick={() => handleDelete(user.id)} style={{ color: 'white', backgroundColor: '#dc3545', border: 'none', cursor: 'pointer', padding: '6px 12px', borderRadius: '4px', fontSize: '0.85rem' }}>Delete</button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
       
-      {users.length === 0 && <p style={{ marginTop: '20px', fontStyle: 'italic' }}>No users found in the database.</p>}
+      {users.length === 0 && <p style={{ marginTop: '20px', fontStyle: 'italic', textAlign: 'center', color: '#777' }}>No users found in the database.</p>}
     </div>
   );
 }

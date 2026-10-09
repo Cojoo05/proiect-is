@@ -4,6 +4,7 @@ import com.proiect.is.proiect_is.model.User;
 import com.proiect.is.proiect_is.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import java.util.List;
 
@@ -22,6 +23,9 @@ public class UserController {
 
     @PostMapping
     public User createUser(@RequestBody User user) {
+        BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
+        String hash = encoder.encode(user.getPassword());
+        user.setPassword(hash);
         return userRepository.save(user);
     }
 
@@ -32,8 +36,11 @@ public class UserController {
 
         user.setUsername(userDetails.getUsername());
         user.setEmail(userDetails.getEmail());
-        user.setPassword(userDetails.getPassword());
         user.setRole(userDetails.getRole());
+
+        BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
+        String hash = encoder.encode(userDetails.getPassword());
+        user.setPassword(hash);
 
         return userRepository.save(user);
     }
