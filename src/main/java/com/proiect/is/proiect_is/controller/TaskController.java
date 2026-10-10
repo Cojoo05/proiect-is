@@ -1,0 +1,50 @@
+package com.proiect.is.proiect_is.controller;
+
+import com.proiect.is.proiect_is.model.Task;
+import com.proiect.is.proiect_is.repository.TaskRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/tasks")
+public class TaskController {
+
+    @Autowired
+    private TaskRepository taskRepository;
+
+    @GetMapping("/my-tasks/{userId}")
+    public List<Task> getMyTasks(@PathVariable Long userId) {
+        return taskRepository.findByAssigneeId(userId);
+    }
+
+    @GetMapping("/given-tasks/{userId}")
+    public List<Task> getGivenTasks(@PathVariable Long userId) {
+        return taskRepository.findByCreatorId(userId);
+    }
+
+    @PostMapping
+    public Task createTask(@RequestBody Task task) {
+        task.setCreationDate(LocalDateTime.now());
+        task.setStatus("PRIMIT");
+        return taskRepository.save(task);
+    }
+
+    @PutMapping("/{taskId}/status")
+    public ResponseEntity<?> updateTaskStatus(@PathVariable Long taskId, @RequestBody Map<String, String> body) {
+        Task task = taskRepository.findById(taskId).orElse(null);
+        if (task == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        String newStatus = body.get("status");
+        task.setStatus(newStatus);
+        taskRepository.save(task);
+
+        return ResponseEntity.ok(task);
+    }
+}
