@@ -60,6 +60,13 @@ function Dashboard({ currentUser, setCurrentUser }) {
              <h3 style={{ margin: 0, color: '#007bff' }}>Tasks</h3>
             <p style={{ fontSize: '12px', color: '#555', marginTop: '10px' }}>Kanban Board</p>
         </div>
+
+        <div onClick={() => navigate('/for-me')} style={activeCardStyle}>
+            <div style={{ fontSize: '40px', marginBottom: '15px' }}>🌙</div>
+             <h3 style={{ margin: 0, color: '#007bff' }}>For Me</h3>
+            <p style={{ fontSize: '12px', color: '#555', marginTop: '10px' }}>Personal space</p>
+        </div>
+
       </div>
     </div>
   );

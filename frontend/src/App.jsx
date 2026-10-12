@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import Login from './pages/Login.jsx';
-import Register from './pages/Register.jsx';
+import Login from './pages/Auth/Login.jsx';
+import Register from './pages/Auth/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import AdminPanel from './pages/AdminPanel.jsx';
 import TasksBoard from './pages/TasksBoard';
+import ForMeDashboard from './pages/ForMeApp/ForMeDashboard.jsx';
+import NotesPage from './pages/ForMeApp/NotesPage.jsx';
 import './App.css';
 
 function App() {
@@ -16,6 +18,12 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+        // For-Me
+        <Route path="/for-me" element={currentUser ? <ForMeDashboard /> : <Navigate to="/login" />} />
+        <Route path="/for-me/notes" element={currentUser ? <NotesPage currentUser={currentUser} /> : <Navigate to="/login" />} />
+        
+        // End for me
+
         <Route path="/" element={<Navigate to={currentUser ? "/dashboard" : "/login"} />} />
         
         <Route path="/login" element={currentUser ? <Navigate to="/dashboard" /> : <Login setCurrentUser={setCurrentUser} />} />
