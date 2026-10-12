@@ -13,6 +13,7 @@ function TasksBoard({ setCurrentView, currentUser }) {
   const columns = ['PRIMIT', 'IN_LUCRU', 'TERMINAT', 'ANULAT'];
 
   const fetchTasks = () => {
+    if (!currentUser) return;
     const endpoint = viewMode === 'myTasks' 
       ? `${API_URL}/my-tasks/${currentUser.id}` 
       : `${API_URL}/given-tasks/${currentUser.id}`;
@@ -25,18 +26,19 @@ function TasksBoard({ setCurrentView, currentUser }) {
 
   const fetchUsers = () => {
     fetch(USERS_API_URL)
-      .then(async res => {
-        const data = await res.json();
-        console.log("Răspunsul brut de la server pentru users este:", data);
-        setUsers(Array.isArray(data) ? data : []);
-      })
-      .catch(err => console.error("Eroare la descărcarea userilor:", err));
+      .then(res => res.json())
+      .then(data => setUsers(Array.isArray(data) ? data : []))
+      .catch(err => console.error(err));
   };
+
+  // Aici era buba! Acum apelăm corect descărcarea imediat ce se deschide pagina
+  useEffect(() => {
+    fetchUsers();
+  }, []);
 
   useEffect(() => {
     if (currentUser) {
       fetchTasks();
-      fetchUsers();
     }
   }, [viewMode, currentUser]);
 
@@ -65,11 +67,11 @@ function TasksBoard({ setCurrentView, currentUser }) {
 
   const handleCreateTask = (e) => {
     e.preventDefault();
+    if (!currentUser) return window.location.reload();
     if (!newTask.title || !newTask.assigneeUsername) return alert("Completează titlul și alege un utilizator!");
 
-    console.log("Lista de useri descărcată este:", users);
-
-    const targetUser = users.find(u => u.username === newTask.assigneeUsername);
+    // Căutăm userul ignorând literele mari/mici și spațiile
+    const targetUser = users.find(u => u.username.toLowerCase().trim() === newTask.assigneeUsername.toLowerCase().trim());
 
     if (!targetUser) {
       return alert(`Utilizatorul "${newTask.assigneeUsername}" nu există în baza de date!`);
@@ -87,12 +89,13 @@ function TasksBoard({ setCurrentView, currentUser }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(taskPayload)
     })
-    .then(res => {
+    .then(async res => {
       if (res.ok) {
         setNewTask({ title: '', description: '', assigneeUsername: '' });
         fetchTasks();
       } else {
-        alert("Eroare la crearea task-ului.");
+        const errorMsg = await res.text();
+        alert(`Eroare de la server! Status: ${res.status}\nDetalii: ${errorMsg}`);
       }
     })
     .catch(err => console.error(err));

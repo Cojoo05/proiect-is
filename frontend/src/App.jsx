@@ -8,13 +8,16 @@ import './App.css';
 
 function App() {
   const [currentView, setCurrentView] = useState('login');
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    const savedUser = localStorage.getItem('currentUser');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
 
   return (
     <>
-      {currentView === 'login' && <Login setCurrentView={setCurrentView} />}
+      {currentView === 'login' && <Login setCurrentUser={setCurrentUser} setCurrentView={setCurrentView} />}
       {currentView === 'register' && <Register setCurrentView={setCurrentView} />}
-      {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} />}
+      {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} currentUser={currentUser} setCurrentUser={setCurrentUser} />}
       {currentView === 'admin' && <AdminPanel setCurrentView={setCurrentView} />}
       {currentView === 'tasks' && <TasksBoard setCurrentView={setCurrentView} currentUser={currentUser} />}
     </>

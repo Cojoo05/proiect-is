@@ -1,21 +1,40 @@
 import { useState } from 'react';
 
-function Login({ setCurrentView }) {
+function Login({ setCurrentView, setCurrentUser }) {
   const [loginData, setLoginData] = useState({ username: '', password: '' });
   const API_URL = 'http://localhost:8080/api/users';
 
   const handleLogin = (e) => {
     e.preventDefault();
+    
     fetch(`${API_URL}/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(loginData)
     })
-    .then(res => {
-      if (res.ok) setCurrentView('dashboard');
-      else alert("Invalid username or password!");
+    .then(async res => {
+      if (res.ok) {
+        const usersRes = await fetch(API_URL);
+        const allUsers = await usersRes.json();
+        
+        const realUser = allUsers.find(u => u.username === loginData.username);
+        
+        if (realUser) {
+          setCurrentUser(realUser);
+          localStorage.setItem('currentUser', JSON.stringify(realUser));
+          setCurrentView('dashboard');
+        } else {
+          alert("Eroare: Utilizatorul s-a logat, dar nu a fost găsit în baza de date.");
+        }
+      } 
+      else {
+        alert("Invalid username or password!");
+      }
     })
-    .catch(() => alert("Eroare de conexiune la server!"));
+    .catch((err) => {
+        console.error("Eroare la rețea:", err);
+        alert("Eroare de conexiune la server!");
+    });
   };
 
   return (
@@ -33,7 +52,7 @@ function Login({ setCurrentView }) {
 
         <div style={{ marginTop: '20px', fontSize: '14px', color: '#555' }}>
           Don't have an account?{' '}
-          <button onClick={() => setCurrentView('register')} style={{ background: 'none', border: 'none', color: '#007bff', cursor: 'pointer', fontWeight: 'bold', padding: 0 }}>Create User</button>
+          <button type="button" onClick={() => setCurrentView('register')} style={{ background: 'none', border: 'none', color: '#007bff', cursor: 'pointer', fontWeight: 'bold', padding: 0 }}>Create User</button>
         </div>
       </div>
     </div>

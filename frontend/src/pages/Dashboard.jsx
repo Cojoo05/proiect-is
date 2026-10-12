@@ -1,4 +1,11 @@
-function Dashboard({ setCurrentView, currentUser }) {
+function Dashboard({ setCurrentView, currentUser, setCurrentUser }) {
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem('currentUser');
+    setCurrentView('login');
+  };
+
   const activeCardStyle = {
     backgroundColor: '#fff',
     border: '2px solid #007bff',
@@ -33,7 +40,7 @@ function Dashboard({ setCurrentView, currentUser }) {
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           <span style={{ fontWeight: '500', color: '#555' }}>Salut, {currentUser?.username}!</span>
-          <button onClick={() => setCurrentView('login')} style={{ padding: '8px 15px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>Logout</button>
+          <button onClick={handleLogout} style={{ padding: '8px 15px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>Logout</button>
         </div>
       </div>
       

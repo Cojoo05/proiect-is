@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-function AdminPanel({ setCurrentView }) {
+function AdminPanel({ setCurrentView, setCurrentUser }) {
   const [users, setUsers] = useState([]);
   const [formData, setFormData] = useState({ username: '', email: '', password: '', role: 'USER' });
   const [editingId, setEditingId] = useState(null);
