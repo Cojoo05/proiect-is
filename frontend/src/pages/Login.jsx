@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-function Login({ setCurrentView, setCurrentUser }) {
+function Login({ setCurrentUser }) {
   const [loginData, setLoginData] = useState({ username: '', password: '' });
   const API_URL = 'http://localhost:8080/api/users';
+  const navigate = useNavigate();
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -22,7 +24,7 @@ function Login({ setCurrentView, setCurrentUser }) {
         if (realUser) {
           setCurrentUser(realUser);
           localStorage.setItem('currentUser', JSON.stringify(realUser));
-          setCurrentView('dashboard');
+          navigate('/dashboard');
         } else {
           alert("Eroare: Utilizatorul s-a logat, dar nu a fost găsit în baza de date.");
         }
@@ -52,7 +54,7 @@ function Login({ setCurrentView, setCurrentUser }) {
 
         <div style={{ marginTop: '20px', fontSize: '14px', color: '#555' }}>
           Don't have an account?{' '}
-          <button type="button" onClick={() => setCurrentView('register')} style={{ background: 'none', border: 'none', color: '#007bff', cursor: 'pointer', fontWeight: 'bold', padding: 0 }}>Create User</button>
+          <button type="button" onClick={() => navigate('/register')} style={{ background: 'none', border: 'none', color: '#007bff', cursor: 'pointer', fontWeight: 'bold', padding: 0 }}>Create User</button>
         </div>
       </div>
     </div>

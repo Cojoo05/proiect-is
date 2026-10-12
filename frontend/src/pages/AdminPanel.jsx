@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-function AdminPanel({ setCurrentView, setCurrentUser }) {
+function AdminPanel() {
+  const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [formData, setFormData] = useState({ username: '', email: '', password: '', role: 'USER' });
   const [editingId, setEditingId] = useState(null);
@@ -10,41 +12,28 @@ function AdminPanel({ setCurrentView, setCurrentUser }) {
   const API_URL = 'http://localhost:8080/api/users';
 
   const fetchUsers = () => {
-    fetch(API_URL)
-      .then(res => res.json())
-      .then(data => setUsers(Array.isArray(data) ? data : []))
-      .catch(err => console.error(err));
+    fetch(API_URL).then(res => res.json()).then(data => setUsers(Array.isArray(data) ? data : [])).catch(err => console.error(err));
   };
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
+  useEffect(() => { fetchUsers(); }, []);
 
   const handleSave = (e) => {
     e.preventDefault();
     if (!formData.username.trim() || !formData.email.trim()) return alert("Fields cannot be empty!");
-    
     const method = editingId ? 'PUT' : 'POST';
     const url = editingId ? `${API_URL}/${editingId}` : API_URL;
 
-    fetch(url, {
-      method: method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData)
-    })
+    fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) })
     .then(async (res) => {
       if (!res.ok) throw new Error("Database rejected the save!");
       fetchUsers();
       setFormData({ username: '', email: '', password: '', role: 'USER' });
       setEditingId(null);
-    })
-    .catch(err => alert(err.message));
+    }).catch(err => alert(err.message));
   };
 
   const handleDelete = (id) => {
-    if(window.confirm("Are you sure?")) {
-      fetch(`${API_URL}/${id}`, { method: 'DELETE' }).then(() => fetchUsers());
-    }
+    if(window.confirm("Are you sure?")) { fetch(`${API_URL}/${id}`, { method: 'DELETE' }).then(() => fetchUsers()); }
   };
 
   const handleEdit = (user) => {
@@ -65,7 +54,7 @@ function AdminPanel({ setCurrentView, setCurrentUser }) {
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '1000px', margin: '0 auto' }}>
       <div style={{ marginBottom: '20px' }}>
-        <button onClick={() => setCurrentView('dashboard')} style={{ padding: '8px 15px', cursor: 'pointer', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '5px' }}>⬅️ Back to Dashboard</button>
+        <button onClick={() => navigate('/dashboard')} style={{ padding: '8px 15px', cursor: 'pointer', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '5px' }}>⬅️ Back to Dashboard</button>
       </div>
       <h1 style={{ textAlign: 'center', marginBottom: '30px' }}>Admin Panel</h1>
 
