@@ -58,10 +58,10 @@ function Dashboard({ setCurrentView, currentUser }) {
           <p style={{ fontSize: '12px', color: '#999', marginTop: '10px', fontStyle: 'italic' }}>Coming soon...</p>
         </div>
 
-        <div style={disabledCardStyle} title="Aplicație în dezvoltare">
-          <div style={{ fontSize: '40px', marginBottom: '15px', filter: 'grayscale(100%)' }}>📅</div>
-          <h3 style={{ margin: 0, color: '#777' }}>Calendar</h3>
-          <p style={{ fontSize: '12px', color: '#999', marginTop: '10px', fontStyle: 'italic' }}>Coming soon...</p>
+       <div onClick={() => setCurrentView('calendar')} style={activeCardStyle}>
+          <div style={{ fontSize: '40px', marginBottom: '15px' }}>📅</div>
+          <h3 style={{ margin: 0, color: '#007bff' }}>Calendar</h3>
+          <p style={{ fontSize: '12px', color: '#555', marginTop: '10px' }}>Schedule & Events</p>
         </div>
 
         <div onClick={() => setCurrentView('tasks')} style={activeCardStyle}>
