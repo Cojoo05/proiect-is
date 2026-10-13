@@ -17,6 +17,13 @@ function Dashboard({ currentUser, setCurrentUser }) {
       description: 'Gestionează activitățile, termenele limită și prioritățile echipei',
       path: '/tasks'
     },
+      {
+          id: 'calendar',
+          title: 'Calendar',
+          icon: '📅',
+          description: 'Schedule & Events',
+          path: '/calendar'
+      },
     {
       id: 'for-me',
       title: 'For Me',
