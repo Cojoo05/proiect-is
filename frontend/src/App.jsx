@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard.jsx';
 import AdminPanel from './pages/AdminPanel.jsx';
 import TasksBoard from './pages/TasksBoard';
 import ForMeDashboard from './pages/ForMeApp/ForMeDashboard.jsx';
+import ProjectsDashboard from './pages/ProjectsDashboard.jsx';
 import NotesPage from './pages/ForMeApp/NotesPage.jsx';
 import './App.css';
 
@@ -32,6 +33,7 @@ function App() {
         <Route path="/dashboard" element={currentUser ? <Dashboard currentUser={currentUser} setCurrentUser={setCurrentUser} /> : <Navigate to="/login" />} />
         <Route path="/admin-panel" element={currentUser ? <AdminPanel /> : <Navigate to="/login" />} />
         <Route path="/tasks" element={currentUser ? <TasksBoard currentUser={currentUser} /> : <Navigate to="/login" />} />
+        <Route path="/projects" element={currentUser ? <ProjectsDashboard currentUser={currentUser} /> : <Navigate to="/login" />} />
       </Routes>
     </BrowserRouter>
   );
