@@ -10,6 +10,7 @@ import TasksBoard from './pages/TasksBoard';
 import ForMeDashboard from './pages/ForMeApp/ForMeDashboard.jsx';
 import ProjectsDashboard from './pages/ProjectsDashboard.jsx';
 import NotesPage from './pages/ForMeApp/NotesPage.jsx';
+import MeetingRooms from './pages/ForMeApp/MeetingRooms.jsx';
 import './App.css';
 
 function App() {
@@ -21,11 +22,12 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        // For-Me
+        {/* For-Me */}
         <Route path="/for-me" element={currentUser ? <ForMeDashboard /> : <Navigate to="/login" />} />
         <Route path="/for-me/notes" element={currentUser ? <NotesPage currentUser={currentUser} /> : <Navigate to="/login" />} />
         
-        // End for me
+        {/* Meeting Rooms */}
+        <Route path="/meeting-rooms" element={currentUser ? <MeetingRooms currentUser={currentUser} /> : <Navigate to="/login" />} />
 
         <Route path="/" element={<Navigate to={currentUser ? "/dashboard" : "/login"} />} />
         
