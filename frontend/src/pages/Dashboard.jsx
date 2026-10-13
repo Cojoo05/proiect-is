@@ -50,9 +50,10 @@ function Dashboard({ currentUser, setCurrentUser }) {
           <h3 style={{ margin: 0, color: '#777' }}>Messages</h3>
         </div>
 
-        <div style={disabledCardStyle} title="Aplicație în dezvoltare">
-          <div style={{ fontSize: '40px', marginBottom: '15px', filter: 'grayscale(100%)' }}>📅</div>
-          <h3 style={{ margin: 0, color: '#777' }}>Calendar</h3>
+        <div onClick={() => navigate('/calendar')} style={activeCardStyle}>
+          <div style={{ fontSize: '40px', marginBottom: '15px' }}>📅</div>
+          <h3 style={{ margin: 0, color: '#007bff' }}>Calendar</h3>
+          <p style={{ fontSize: '12px', color: '#555', marginTop: '10px' }}>Schedule & Events</p>
         </div>
 
         <div onClick={() => navigate('/tasks')} style={activeCardStyle}>

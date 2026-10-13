@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Auth/Login.jsx';
 import Register from './pages/Auth/Register.jsx';
+import Calendar from './pages/Calendar';
+
 import Dashboard from './pages/Dashboard.jsx';
 import AdminPanel from './pages/AdminPanel.jsx';
 import TasksBoard from './pages/TasksBoard';
@@ -28,7 +30,7 @@ function App() {
         
         <Route path="/login" element={currentUser ? <Navigate to="/dashboard" /> : <Login setCurrentUser={setCurrentUser} />} />
         <Route path="/register" element={<Register />} />
-        
+        <Route path="/calendar" element={<Calendar currentUser={currentUser} />} />
         <Route path="/dashboard" element={currentUser ? <Dashboard currentUser={currentUser} setCurrentUser={setCurrentUser} /> : <Navigate to="/login" />} />
         <Route path="/admin-panel" element={currentUser ? <AdminPanel /> : <Navigate to="/login" />} />
         <Route path="/tasks" element={currentUser ? <TasksBoard currentUser={currentUser} /> : <Navigate to="/login" />} />
