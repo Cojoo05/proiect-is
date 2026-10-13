@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-function Register({ setCurrentView }) {
+function Register() {
   const [registerData, setRegisterData] = useState({ username: '', email: '', password: '' });
   const API_URL = 'http://localhost:8080/api/users';
 

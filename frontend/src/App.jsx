@@ -1,25 +1,39 @@
 import { useState } from 'react';
-import Login from './pages/Login.jsx';
-import Register from './pages/Register.jsx';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import Login from './pages/Auth/Login.jsx';
+import Register from './pages/Auth/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import AdminPanel from './pages/AdminPanel.jsx';
 import TasksBoard from './pages/TasksBoard';
-import Calendar from './pages/Calendar'; // <--- Adăugat
+import ForMeDashboard from './pages/ForMeApp/ForMeDashboard.jsx';
+import NotesPage from './pages/ForMeApp/NotesPage.jsx';
 import './App.css';
 
 function App() {
-  const [currentView, setCurrentView] = useState('login');
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    const savedUser = localStorage.getItem('currentUser');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
 
   return (
-    <>
-      {currentView === 'login' && <Login setCurrentView={setCurrentView} />}
-      {currentView === 'register' && <Register setCurrentView={setCurrentView} />}
-      {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} currentUser={currentUser} />}
-      {currentView === 'admin' && <AdminPanel setCurrentView={setCurrentView} />}
-      {currentView === 'tasks' && <TasksBoard setCurrentView={setCurrentView} currentUser={currentUser} />}
-      {currentView === 'calendar' && <Calendar setCurrentView={setCurrentView} currentUser={currentUser} />} {/* <--- Adăugat */}
-    </>
+    <BrowserRouter>
+      <Routes>
+        // For-Me
+        <Route path="/for-me" element={currentUser ? <ForMeDashboard /> : <Navigate to="/login" />} />
+        <Route path="/for-me/notes" element={currentUser ? <NotesPage currentUser={currentUser} /> : <Navigate to="/login" />} />
+        
+        // End for me
+
+        <Route path="/" element={<Navigate to={currentUser ? "/dashboard" : "/login"} />} />
+        
+        <Route path="/login" element={currentUser ? <Navigate to="/dashboard" /> : <Login setCurrentUser={setCurrentUser} />} />
+        <Route path="/register" element={<Register />} />
+        
+        <Route path="/dashboard" element={currentUser ? <Dashboard currentUser={currentUser} setCurrentUser={setCurrentUser} /> : <Navigate to="/login" />} />
+        <Route path="/admin-panel" element={currentUser ? <AdminPanel /> : <Navigate to="/login" />} />
+        <Route path="/tasks" element={currentUser ? <TasksBoard currentUser={currentUser} /> : <Navigate to="/login" />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 
