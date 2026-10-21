@@ -2,9 +2,12 @@ package com.proiect.is.proiect_is.controller;
 
 import com.proiect.is.proiect_is.model.*;
 import com.proiect.is.proiect_is.repository.*;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -23,6 +26,9 @@ public class PollController {
     private final FeedMessageRepository feedMessageRepo;
     private final FeedChannelRepository feedChannelRepo;
     private final SimpMessagingTemplate messagingTemplate;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Autowired
     public PollController(PollRepository pollRepo,
@@ -48,6 +54,14 @@ public class PollController {
         return ResponseEntity.ok(pollRepo.findByProjectIdOrderByCreatedAtDesc(projectId));
     }
 
+    @GetMapping("/{projectId}/polls/{pollId}")
+    public ResponseEntity<Poll> getPollById(@PathVariable Long projectId, @PathVariable Long pollId) {
+        return pollRepo.findById(pollId)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @Transactional
     @PostMapping("/{projectId}/polls")
     public ResponseEntity<Poll> createPoll(@PathVariable Long projectId,
                                             @RequestBody Map<String, Object> body) {
@@ -66,35 +80,54 @@ public class PollController {
 
         @SuppressWarnings("unchecked")
         List<String> optionTexts = (List<String>) body.get("options");
-        for (String text : optionTexts) {
-            PollOption opt = new PollOption();
-            opt.setPoll(savedPoll);
-            opt.setText(text);
-            pollOptionRepo.save(opt);
+        List<PollOption> savedOptions = new ArrayList<>();
+        if (optionTexts != null) {
+            for (String text : optionTexts) {
+                if (text != null && !text.trim().isEmpty()) {
+                    PollOption opt = new PollOption();
+                    opt.setPoll(savedPoll);
+                    opt.setText(text.trim());
+                    opt.setVotes(new ArrayList<>());
+                    savedOptions.add(pollOptionRepo.save(opt));
+                }
+            }
         }
+        savedPoll.setOptions(savedOptions);
 
-        Poll fullPoll = pollRepo.findById(savedPoll.getId()).orElse(savedPoll);
-
-        // Auto-post in general channel feed
+        // Auto-post in general channel feed (ensure channel exists)
         List<FeedChannel> channels = feedChannelRepo.findByProjectId(projectId);
-        if (!channels.isEmpty()) {
-            FeedChannel generalChannel = channels.get(0);
-            FeedMessage pollMsg = new FeedMessage();
-            pollMsg.setProject(project);
-            pollMsg.setChannel(generalChannel);
-            pollMsg.setSender(creator);
-            pollMsg.setContent("📊 " + poll.getQuestion());
-            pollMsg.setType("POLL");
-            pollMsg.setPollId(savedPoll.getId());
-            pollMsg.setSentAt(LocalDateTime.now());
-            FeedMessage savedMsg = feedMessageRepo.save(pollMsg);
-            messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/feed/" + generalChannel.getId(), savedMsg);
+        FeedChannel generalChannel;
+        if (channels.isEmpty()) {
+            generalChannel = new FeedChannel();
+            generalChannel.setProject(project);
+            generalChannel.setName("general");
+            generalChannel.setCreatedAt(LocalDateTime.now());
+            generalChannel = feedChannelRepo.save(generalChannel);
+        } else {
+            generalChannel = channels.get(0);
         }
 
-        messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/polls", fullPoll);
-        return ResponseEntity.ok(fullPoll);
+        FeedMessage pollMsg = new FeedMessage();
+        pollMsg.setProject(project);
+        pollMsg.setChannel(generalChannel);
+        pollMsg.setSender(creator);
+        pollMsg.setContent("📊 " + savedPoll.getQuestion());
+        pollMsg.setType("POLL");
+        pollMsg.setPollId(savedPoll.getId());
+        pollMsg.setSentAt(LocalDateTime.now());
+        FeedMessage savedMsg = feedMessageRepo.save(pollMsg);
+
+        try {
+            messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/feed/" + generalChannel.getId(), savedMsg);
+            messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/polls", savedPoll);
+        } catch (Exception e) {
+            // WS send fails gracefully if client disconnected
+        }
+
+        return ResponseEntity.ok(savedPoll);
     }
 
+    @Transactional
     @PostMapping("/{projectId}/polls/{pollId}/vote")
     public ResponseEntity<Poll> vote(@PathVariable Long projectId,
                                       @PathVariable Long pollId,
@@ -102,23 +135,40 @@ public class PollController {
         Long optionId = Long.valueOf(body.get("optionId").toString());
         Long voterId = Long.valueOf(body.get("voterId").toString());
 
-        if (pollVoteRepo.existsByVoterIdAndPollId(voterId, pollId)) {
-            return ResponseEntity.badRequest().build();
-        }
-
         PollOption option = pollOptionRepo.findById(optionId)
                 .orElseThrow(() -> new RuntimeException("Option not found"));
         User voter = userRepo.findById(voterId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        PollVote vote = new PollVote();
-        vote.setOption(option);
-        vote.setVoter(voter);
-        vote.setPollId(pollId);
-        pollVoteRepo.save(vote);
+        Optional<PollVote> existingVote = pollVoteRepo.findByVoterIdAndPollId(voterId, pollId);
+        if (existingVote.isPresent()) {
+            PollVote current = existingVote.get();
+            if (current.getOption().getId().equals(optionId)) {
+                // Already voted for this same option - keep it
+            } else {
+                // Change vote to new option
+                current.setOption(option);
+                pollVoteRepo.save(current);
+            }
+        } else {
+            PollVote vote = new PollVote();
+            vote.setOption(option);
+            vote.setVoter(voter);
+            vote.setPollId(pollId);
+            pollVoteRepo.save(vote);
+        }
 
-        Poll updated = pollRepo.findById(pollId).orElseThrow();
-        messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/polls", updated);
+        entityManager.flush();
+        entityManager.clear();
+
+        Poll updated = pollRepo.findById(pollId).orElseThrow(() -> new RuntimeException("Poll not found"));
+
+        try {
+            messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/polls", updated);
+        } catch (Exception e) {
+            // WS send fails gracefully
+        }
+
         return ResponseEntity.ok(updated);
     }
 }

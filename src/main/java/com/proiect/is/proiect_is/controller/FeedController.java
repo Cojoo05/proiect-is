@@ -14,6 +14,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -45,7 +46,19 @@ public class FeedController {
 
     @GetMapping("/{projectId}/feed/channels")
     public ResponseEntity<List<FeedChannel>> getChannels(@PathVariable Long projectId) {
-        return ResponseEntity.ok(channelRepo.findByProjectId(projectId));
+        List<FeedChannel> channels = channelRepo.findByProjectId(projectId);
+        if (channels.isEmpty()) {
+            Project project = projectRepo.findById(projectId).orElse(null);
+            if (project != null) {
+                FeedChannel general = new FeedChannel();
+                general.setProject(project);
+                general.setName("general");
+                general.setCreatedAt(LocalDateTime.now());
+                channels = new ArrayList<>();
+                channels.add(channelRepo.save(general));
+            }
+        }
+        return ResponseEntity.ok(channels);
     }
 
     @PostMapping("/{projectId}/feed/channels")
@@ -61,7 +74,11 @@ public class FeedController {
         FeedChannel saved = channelRepo.save(channel);
 
         // Notify all subscribers
-        messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/channels", saved);
+        try {
+            messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/channels", saved);
+        } catch (Exception e) {
+            // ignore
+        }
         return ResponseEntity.ok(saved);
     }
 
@@ -100,7 +117,11 @@ public class FeedController {
         FeedMessage saved = messageRepo.save(message);
 
         // Push to WebSocket subscribers
-        messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/feed/" + channelId, saved);
+        try {
+            messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/feed/" + channelId, saved);
+        } catch (Exception e) {
+            // ignore
+        }
         return ResponseEntity.ok(saved);
     }
 }

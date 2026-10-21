@@ -1,6 +1,8 @@
 package com.proiect.is.proiect_is.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import java.util.ArrayList;
 import java.util.List;
 
 @Entity
@@ -11,6 +13,7 @@ public class PollOption {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "poll_id", nullable = false)
     private Poll poll;
@@ -19,7 +22,7 @@ public class PollOption {
     private String text;
 
     @OneToMany(mappedBy = "option", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
-    private List<PollVote> votes;
+    private List<PollVote> votes = new ArrayList<>();
 
     public PollOption() {}
 

@@ -137,7 +137,7 @@ function ProjectDetail({ currentUser }) {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'feed' && <FeedTab projectId={projectId} currentUser={currentUser} members={members} isOwner={isOwner} />}
+      {activeTab === 'feed' && <FeedTab projectId={projectId} currentUser={currentUser} members={members} isOwner={isOwner} onSwitchTab={setActiveTab} />}
       {activeTab === 'tasks' && <TasksTab projectId={projectId} currentUser={currentUser} members={members} />}
       {activeTab === 'files' && <FilesTab projectId={projectId} currentUser={currentUser} />}
       {activeTab === 'polls' && <PollsTab projectId={projectId} currentUser={currentUser} />}
