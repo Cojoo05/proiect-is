@@ -5,7 +5,7 @@ import SockJS from 'sockjs-client/dist/sockjs.min.js';
 const COLORS = ['#5a3d5c', '#2563eb', '#059669', '#d97706', '#dc2626', '#7c3aed'];
 const avatarColor = (name) => COLORS[(name?.charCodeAt(0) || 0) % COLORS.length];
 
-function FeedTab({ projectId, currentUser, isOwner, onSwitchTab }) {
+function FeedTab({ projectId, currentUser, isOwner, onSwitchTab, permissions = {} }) {
   const [channels, setChannels] = useState([]);
   const [activeChannel, setActiveChannel] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -16,6 +16,9 @@ function FeedTab({ projectId, currentUser, isOwner, onSwitchTab }) {
   const messagesEndRef = useRef(null);
   const subscriptionRef = useRef(null);
 
+  const canCreateChannels = isOwner || permissions.canCreateChannels === true;
+  const canSendMessages = permissions.canSendMessages !== false;
+
   const API = `http://localhost:8080/api/projects/${projectId}`;
 
   // Load channels on mount
@@ -23,12 +26,16 @@ function FeedTab({ projectId, currentUser, isOwner, onSwitchTab }) {
     fetch(`${API}/feed/channels`)
       .then(r => r.json())
       .then(data => {
-        const chans = Array.isArray(data) ? data : [];
+        let chans = Array.isArray(data) ? data : [];
+        if (!isOwner && permissions.allowedChannels && permissions.allowedChannels !== 'ALL') {
+          const allowedIds = permissions.allowedChannels.split(',').map(s => parseInt(s.trim()));
+          chans = chans.filter(c => allowedIds.includes(c.id));
+        }
         setChannels(chans);
         if (chans.length > 0) setActiveChannel(chans[0]);
       })
       .catch(console.error);
-  }, [projectId]);
+  }, [projectId, permissions.allowedChannels]);
 
   // Setup WebSocket
   useEffect(() => {
@@ -201,7 +208,7 @@ function FeedTab({ projectId, currentUser, isOwner, onSwitchTab }) {
             </div>
           ))}
         </div>
-        {isOwner && (
+        {canCreateChannels && (
           <div style={{ padding: '10px' }}>
             {showAddChannel ? (
               <form onSubmit={addChannel} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -346,23 +353,24 @@ function FeedTab({ projectId, currentUser, isOwner, onSwitchTab }) {
         {/* Input */}
         <form onSubmit={sendMessage} style={{ padding: '12px 16px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '8px', alignItems: 'center', backgroundColor: '#ffffff' }}>
           <input
+            disabled={!canSendMessages}
             value={text}
             onChange={e => setText(e.target.value)}
-            placeholder={`Mesaj în #${activeChannel?.name || '...'}`}
-            style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', outline: 'none', backgroundColor: '#f8fafc' }}
+            placeholder={canSendMessages ? `Mesaj în #${activeChannel?.name || '...'}` : '⚠️ Nu ai permisiunea de a trimite mesaje pe acest canal'}
+            style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', outline: 'none', backgroundColor: canSendMessages ? '#f8fafc' : '#f1f5f9', cursor: canSendMessages ? 'text' : 'not-allowed' }}
           />
           <button
             type="submit"
-            disabled={!text.trim()}
+            disabled={!text.trim() || !canSendMessages}
             style={{
               padding: '10px 18px',
               backgroundColor: '#5a3d5c',
               color: 'white',
               border: 'none',
               borderRadius: '8px',
-              cursor: text.trim() ? 'pointer' : 'default',
+              cursor: (text.trim() && canSendMessages) ? 'pointer' : 'default',
               fontWeight: 'bold',
-              opacity: text.trim() ? 1 : 0.4,
+              opacity: (text.trim() && canSendMessages) ? 1 : 0.4,
               fontSize: '14px'
             }}
           >

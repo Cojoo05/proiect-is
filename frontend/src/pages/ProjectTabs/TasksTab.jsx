@@ -3,10 +3,13 @@ import { useState, useEffect } from 'react';
 const COLUMNS = ['PRIMIT', 'IN_LUCRU', 'TERMINAT', 'ANULAT'];
 const COL_COLORS = { PRIMIT: '#3b82f6', IN_LUCRU: '#f59e0b', TERMINAT: '#10b981', ANULAT: '#ef4444' };
 
-function TasksTab({ projectId, currentUser, members }) {
+function TasksTab({ projectId, currentUser, members, permissions = {} }) {
   const [tasks, setTasks] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', description: '', assigneeId: '' });
+
+  const canCreate = permissions.canCreateTasks !== false;
+  const canManage = permissions.canManageTasks !== false;
 
   const API = 'http://localhost:8080/api/tasks';
 
@@ -53,12 +56,18 @@ function TasksTab({ projectId, currentUser, members }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
-        <button
-          onClick={() => setShowModal(true)}
-          style={{ padding: '9px 18px', backgroundColor: '#5a3d5c', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
-        >
-          + Task Nou
-        </button>
+        {canCreate ? (
+          <button
+            onClick={() => setShowModal(true)}
+            style={{ padding: '9px 18px', backgroundColor: '#5a3d5c', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
+          >
+            + Task Nou
+          </button>
+        ) : (
+          <span style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic', alignSelf: 'center' }}>
+            ℹ️ Nu ai permisiunea de a crea task-uri pe acest proiect
+          </span>
+        )}
       </div>
 
       {/* Kanban */}
@@ -82,9 +91,9 @@ function TasksTab({ projectId, currentUser, members }) {
               {tasks.filter(t => t.status === col).map(task => (
                 <div
                   key={task.id}
-                  draggable
-                  onDragStart={e => handleDragStart(e, task.id)}
-                  style={{ backgroundColor: 'white', padding: '12px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', cursor: 'grab', borderLeft: '3px solid ' + COL_COLORS[col] }}
+                  draggable={canManage}
+                  onDragStart={e => canManage && handleDragStart(e, task.id)}
+                  style={{ backgroundColor: 'white', padding: '12px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', cursor: canManage ? 'grab' : 'default', borderLeft: '3px solid ' + COL_COLORS[col] }}
                 >
                   <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px', marginBottom: '4px' }}>{task.title}</div>
                   {task.description && <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>{task.description}</div>}

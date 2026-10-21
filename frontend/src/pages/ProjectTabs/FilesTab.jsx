@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 
-function FilesTab({ projectId, currentUser }) {
+function FilesTab({ projectId, currentUser, permissions = {} }) {
   const [gapiLoaded, setGapiLoaded] = useState(false);
   const [gisLoaded, setGisLoaded] = useState(false);
   const [accessToken, setAccessToken] = useState(null);
   const [savedLinks, setSavedLinks] = useState([]);
   const tokenClientRef = useRef(null);
+
+  const canManage = permissions.canManageFiles !== false;
 
   const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
   const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || '';
@@ -139,12 +141,18 @@ function FilesTab({ projectId, currentUser }) {
       )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '20px' }}>
-        <button
-          onClick={handleAuthAndPick}
-          style={{ padding: '9px 18px', backgroundColor: '#4285f4', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
-        >
-          <span>☁️</span> Adaugă din Google Drive
-        </button>
+        {canManage ? (
+          <button
+            onClick={handleAuthAndPick}
+            style={{ padding: '9px 18px', backgroundColor: '#4285f4', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+          >
+            <span>☁️</span> Adaugă din Google Drive
+          </button>
+        ) : (
+          <span style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic', alignSelf: 'center' }}>
+            ℹ️ Nu ai permisiunea de a adăuga fișiere pe acest proiect
+          </span>
+        )}
       </div>
 
       {savedLinks.length === 0 ? (

@@ -2,13 +2,16 @@ import { useState, useEffect, useRef } from 'react';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client/dist/sockjs.min.js';
 
-function PollsTab({ projectId, currentUser }) {
+function PollsTab({ projectId, currentUser, permissions = {} }) {
   const [polls, setPolls] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
   const [question, setQuestion] = useState('');
   const [options, setOptions] = useState(['', '']);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const stompClientRef = useRef(null);
+
+  const canCreate = permissions.canCreatePolls !== false;
+  const canVote = permissions.canVotePolls !== false;
 
   const API = `http://localhost:8080/api/projects/${projectId}`;
 
@@ -95,6 +98,10 @@ function PollsTab({ projectId, currentUser }) {
   };
 
   const handleVote = (pollId, optionId) => {
+    if (!canVote) {
+      alert('Nu ai permisiunea de a vota în sondajele acestui proiect.');
+      return;
+    }
     fetch(`${API}/polls/${pollId}/vote`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -121,21 +128,27 @@ function PollsTab({ projectId, currentUser }) {
             Ia decizii rapide împreună cu echipa proiectului
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(!showCreate)}
-          style={{
-            padding: '9px 18px',
-            backgroundColor: showCreate ? '#64748b' : '#5a3d5c',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            transition: 'background-color 0.15s'
-          }}
-        >
-          {showCreate ? '✕ Anulează' : '+ Poll Nou'}
-        </button>
+        {canCreate ? (
+          <button
+            onClick={() => setShowCreate(!showCreate)}
+            style={{
+              padding: '9px 18px',
+              backgroundColor: showCreate ? '#64748b' : '#5a3d5c',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              transition: 'background-color 0.15s'
+            }}
+          >
+            {showCreate ? '✕ Anulează' : '+ Poll Nou'}
+          </button>
+        ) : (
+          <span style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic' }}>
+            ℹ️ Nu ai permisiunea de a crea sondaje noi
+          </span>
+        )}
       </div>
 
       {/* Create Poll Form */}
