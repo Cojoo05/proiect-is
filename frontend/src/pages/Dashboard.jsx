@@ -17,13 +17,13 @@ function Dashboard({ currentUser, setCurrentUser }) {
       description: 'Gestionează activitățile, termenele limită și prioritățile echipei',
       path: '/tasks'
     },
-      {
-          id: 'calendar',
-          title: 'Calendar',
-          icon: '📅',
-          description: 'Schedule & Events',
-          path: '/calendar'
-      },
+    {
+      id: 'calendar',
+      title: 'Calendar',
+      icon: '📅',
+      description: 'Schedule & Events',
+      path: '/calendar'
+    },
     {
       id: 'for-me',
       title: 'For Me',
@@ -37,6 +37,13 @@ function Dashboard({ currentUser, setCurrentUser }) {
       icon: '📁',
       description: 'Spațiul de lucru al echipei, task-uri, feed și planificare',
       path: '/projects'
+    },
+    {
+      id: 'messages',
+      title: 'Mesagerie',
+      icon: '💬',
+      description: 'Conversații și grupuri de comunicare în timp real',
+      path: '/messages'
     }
   ];
 
