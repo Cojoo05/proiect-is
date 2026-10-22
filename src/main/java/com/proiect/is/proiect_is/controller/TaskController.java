@@ -26,7 +26,10 @@ public class TaskController {
     public List<Task> getGivenTasks(@PathVariable Long userId) {
         return taskRepository.findByCreatorId(userId);
     }
-
+    @GetMapping("/project/{projectId}")
+    public List<Task> getProjectTasks(@PathVariable Long projectId) {
+        return taskRepository.findByProjectId(projectId);
+    }
     @PostMapping
     public Task createTask(@RequestBody Task task) {
         task.setCreationDate(LocalDateTime.now());

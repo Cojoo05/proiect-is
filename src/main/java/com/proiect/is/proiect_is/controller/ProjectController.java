@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/projects")
@@ -44,6 +45,44 @@ public class ProjectController {
     public ResponseEntity<List<Project>> getUserProjects(@PathVariable Long userId) {
         List<Project> projects = projectRepository.findAccessibleProjects(userId);
         return ResponseEntity.ok(projects);
+    }
+
+    @GetMapping("/{projectId}")
+    public ResponseEntity<Project> getProjectById(@PathVariable Long projectId) {
+        return projectRepository.findById(projectId)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{projectId}/members")
+    public ResponseEntity<List<ProjectMember>> getProjectMembers(@PathVariable Long projectId) {
+        List<ProjectMember> members = projectMemberRepository.findByProjectId(projectId);
+        return ResponseEntity.ok(members);
+    }
+
+    @PostMapping("/{projectId}/invite")
+    public ResponseEntity<ProjectInvitation> inviteUser(@PathVariable Long projectId,
+                                                         @RequestBody Map<String, Long> body) {
+        Long invitedUserId = body.get("userId");
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new RuntimeException("Project not found"));
+        User invitedUser = userRepository.findById(invitedUserId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // Check if already a member
+        boolean alreadyMember = projectMemberRepository.findByProjectId(projectId)
+                .stream().anyMatch(m -> m.getUser().getId().equals(invitedUserId));
+        if (alreadyMember) return ResponseEntity.badRequest().build();
+
+        LocalDateTime now = LocalDateTime.now();
+        ProjectInvitation invitation = new ProjectInvitation();
+        invitation.setProject(project);
+        invitation.setInvitedUser(invitedUser);
+        invitation.setStatus("PENDING");
+        invitation.setCreatedAt(now);
+        invitation.setExpiresAt(now.plusHours(48));
+        ProjectInvitation saved = projectInvitationRepository.save(invitation);
+        return ResponseEntity.ok(saved);
     }
 
     @PostMapping
