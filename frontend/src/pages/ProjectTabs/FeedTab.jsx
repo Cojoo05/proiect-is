@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { API_BASE_URL, WS_BASE_URL } from '../../config';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client/dist/sockjs.min.js';
 
@@ -19,7 +20,7 @@ function FeedTab({ projectId, currentUser, isOwner, onSwitchTab, permissions = {
   const canCreateChannels = isOwner || permissions.canCreateChannels === true;
   const canSendMessages = permissions.canSendMessages !== false;
 
-  const API = `http://localhost:8080/api/projects/${projectId}`;
+  const API = `${API_BASE_URL}/api/projects/${projectId}`;
 
   // Load channels on mount
   useEffect(() => {
@@ -42,7 +43,7 @@ function FeedTab({ projectId, currentUser, isOwner, onSwitchTab, permissions = {
     let client = null;
     try {
       client = new Client({
-        webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
+        webSocketFactory: () => new SockJS(WS_BASE_URL),
         reconnectDelay: 5000,
         onConnect: () => {
           // Subscribe to new channels

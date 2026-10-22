@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { API_BASE_URL, WS_BASE_URL } from '../config';
 import { useNavigate } from 'react-router-dom';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client/dist/sockjs.min.js';
@@ -32,8 +33,8 @@ function MessagesPage({ currentUser }) {
   const messagesEndRef = useRef(null);
   const messageSubscriptionRef = useRef(null);
 
-  const API_CHAT = 'http://localhost:8080/api/chat';
-  const API_USERS = 'http://localhost:8080/api/users';
+  const API_CHAT = `${API_BASE_URL}/api/chat`;
+  const API_USERS = `${API_BASE_URL}/api/users`;
 
   // 1. Fetch conversations
   const fetchConversations = (selectId = null) => {
@@ -80,7 +81,7 @@ function MessagesPage({ currentUser }) {
     let client = null;
     try {
       client = new Client({
-        webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
+        webSocketFactory: () => new SockJS(WS_BASE_URL),
         reconnectDelay: 5000,
         onConnect: () => {
           client.subscribe(`/topic/chat/users/${currentUser.id}/notifications`, () => {

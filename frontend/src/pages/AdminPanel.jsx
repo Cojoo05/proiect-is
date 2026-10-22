@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE_URL } from '../config';
 
 function AdminPanel() {
   const navigate = useNavigate();
@@ -9,7 +10,7 @@ function AdminPanel() {
   const [sortConfig, setSortConfig] = useState({ key: 'id', direction: 'asc' });
   const [expandedPasswords, setExpandedPasswords] = useState({});
   
-  const API_URL = 'http://localhost:8080/api/users';
+  const API_URL = `${API_BASE_URL}/api/users`;
 
   const fetchUsers = () => {
     fetch(API_URL).then(res => res.json()).then(data => setUsers(Array.isArray(data) ? data : [])).catch(err => console.error(err));

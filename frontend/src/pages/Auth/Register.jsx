@@ -1,8 +1,11 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { API_BASE_URL } from '../../config';
 
 function Register() {
   const [registerData, setRegisterData] = useState({ username: '', email: '', password: '' });
-  const API_URL = 'http://localhost:8080/api/users';
+  const navigate = useNavigate();
+  const API_URL = `${API_BASE_URL}/api/users`;
 
   const handleRegister = (e) => {
     e.preventDefault();
@@ -19,7 +22,7 @@ function Register() {
     .then(res => {
       if (res.ok) {
         alert("Account created successfully! You can now login.");
-        setCurrentView('login');
+        navigate('/login');
       } else {
         alert("Error creating account.");
       }
@@ -43,7 +46,7 @@ function Register() {
 
         <div style={{ marginTop: '20px', fontSize: '14px', color: '#555' }}>
           Already have an account?{' '}
-          <button onClick={() => setCurrentView('login')} style={{ background: 'none', border: 'none', color: '#007bff', cursor: 'pointer', fontWeight: 'bold', padding: 0 }}>Login</button>
+          <button type="button" onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', color: '#007bff', cursor: 'pointer', fontWeight: 'bold', padding: 0 }}>Login</button>
         </div>
       </div>
     </div>

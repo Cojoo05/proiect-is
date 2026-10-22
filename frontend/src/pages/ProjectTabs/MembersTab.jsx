@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../../config';
 
 const COLORS = ['#5a3d5c', '#2563eb', '#059669', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#4b5563'];
 const avatarColor = (name) => COLORS[(name?.charCodeAt(0) || 0) % COLORS.length];
@@ -24,7 +25,7 @@ function MembersTab({ projectId, currentUser, isOwner, members, onMembersChange,
     selectedChannelIds: []
   });
 
-  const API = `http://localhost:8080/api/projects/${projectId}`;
+  const API = `${API_BASE_URL}/api/projects/${projectId}`;
 
   const fetchRoles = () => {
     fetch(`${API}/roles`)

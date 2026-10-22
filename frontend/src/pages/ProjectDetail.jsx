@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { API_BASE_URL } from '../config';
 import FeedTab from './ProjectTabs/FeedTab';
 import TasksTab from './ProjectTabs/TasksTab';
 import FilesTab from './ProjectTabs/FilesTab';
@@ -26,7 +27,7 @@ function ProjectDetail({ currentUser }) {
   const [allUsers, setAllUsers] = useState([]);
   const [selectedInviteUser, setSelectedInviteUser] = useState('');
 
-  const API = `http://localhost:8080/api/projects`;
+  const API = `${API_BASE_URL}/api/projects`;
 
   const fetchMembers = useCallback(() => {
     fetch(`${API}/${projectId}/members`)
@@ -50,7 +51,7 @@ function ProjectDetail({ currentUser }) {
       fetch(`${API}/${projectId}`).then(r => r.json()),
       fetch(`${API}/${projectId}/members`).then(r => r.json()),
       fetch(`${API}/${projectId}/feed/channels`).then(r => r.json()).catch(() => []),
-      fetch(`http://localhost:8080/api/users`).then(r => r.json()).catch(() => [])
+      fetch(`${API_BASE_URL}/api/users`).then(r => r.json()).catch(() => [])
     ])
       .then(([proj, mems, chans, users]) => {
         setProject(proj);

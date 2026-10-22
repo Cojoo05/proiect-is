@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { API_BASE_URL, WS_BASE_URL } from '../../config';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client/dist/sockjs.min.js';
 
@@ -13,7 +14,7 @@ function PollsTab({ projectId, currentUser, permissions = {} }) {
   const canCreate = permissions.canCreatePolls !== false;
   const canVote = permissions.canVotePolls !== false;
 
-  const API = `http://localhost:8080/api/projects/${projectId}`;
+  const API = `${API_BASE_URL}/api/projects/${projectId}`;
 
   const fetchPolls = () => {
     fetch(`${API}/polls`)
@@ -30,7 +31,7 @@ function PollsTab({ projectId, currentUser, permissions = {} }) {
     let client = null;
     try {
       client = new Client({
-        webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
+        webSocketFactory: () => new SockJS(WS_BASE_URL),
         reconnectDelay: 5000,
         onConnect: () => {
           client.subscribe(`/topic/projects/${projectId}/polls`, (msg) => {

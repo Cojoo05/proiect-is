@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../../config';
 
 const COLUMNS = ['PRIMIT', 'IN_LUCRU', 'TERMINAT', 'ANULAT'];
 const COL_COLORS = { PRIMIT: '#3b82f6', IN_LUCRU: '#f59e0b', TERMINAT: '#10b981', ANULAT: '#ef4444' };
@@ -11,7 +12,7 @@ function TasksTab({ projectId, currentUser, members, permissions = {} }) {
   const canCreate = permissions.canCreateTasks !== false;
   const canManage = permissions.canManageTasks !== false;
 
-  const API = 'http://localhost:8080/api/tasks';
+  const API = `${API_BASE_URL}/api/tasks`;
 
   const fetchTasks = () => {
     fetch(`${API}/project/${projectId}`)
