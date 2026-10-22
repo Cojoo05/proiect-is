@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE_URL } from '../../config';
 
 function NotesPage({ currentUser }) {
   const navigate = useNavigate();
@@ -8,7 +9,7 @@ function NotesPage({ currentUser }) {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const API_URL = 'http://localhost:8080/api/notes';
+  const API_URL = `${API_BASE_URL}/api/notes`;
 
   const isNotePinned = (note) => Boolean(note.isPinned ?? note.pinned);
 

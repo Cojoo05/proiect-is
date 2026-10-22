@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { API_BASE_URL } from '../../config';
 
 function FilesTab({ projectId, currentUser, permissions = {} }) {
   const [gapiLoaded, setGapiLoaded] = useState(false);
@@ -16,7 +17,7 @@ function FilesTab({ projectId, currentUser, permissions = {} }) {
 
   // Load saved links from backend
   useEffect(() => {
-    fetch(`http://localhost:8080/api/projects/${projectId}/links`)
+    fetch(`${API_BASE_URL}/api/projects/${projectId}/links`)
       .then(r => r.ok ? r.json() : [])
       .then(data => setSavedLinks(Array.isArray(data) ? data : []))
       .catch(() => {});
@@ -97,7 +98,7 @@ function FilesTab({ projectId, currentUser, permissions = {} }) {
               mimeType: doc[window.google.picker.Document.MIME_TYPE]
             };
             // Save to backend
-            fetch(`http://localhost:8080/api/projects/${projectId}/links`, {
+            fetch(`${API_BASE_URL}/api/projects/${projectId}/links`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ ...link, addedById: currentUser.id })
@@ -112,7 +113,7 @@ function FilesTab({ projectId, currentUser, permissions = {} }) {
   };
 
   const removeLink = (linkId) => {
-    fetch(`http://localhost:8080/api/projects/${projectId}/links/${linkId}`, { method: 'DELETE' })
+    fetch(`${API_BASE_URL}/api/projects/${projectId}/links/${linkId}`, { method: 'DELETE' })
       .then(r => { if (r.ok) setSavedLinks(prev => prev.filter(l => l.id !== linkId)); })
       .catch(console.error);
   };

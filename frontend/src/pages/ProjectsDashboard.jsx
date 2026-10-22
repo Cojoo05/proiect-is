@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE_URL } from '../config';
 
 function ProjectsDashboard({ currentUser }) {
   const navigate = useNavigate();
@@ -13,8 +14,8 @@ function ProjectsDashboard({ currentUser }) {
   const [projectDescription, setProjectDescription] = useState('');
   const [selectedUserIds, setSelectedUserIds] = useState([]);
 
-  const API_URL = 'http://localhost:8080/api/projects';
-  const USERS_API_URL = 'http://localhost:8080/api/users';
+  const API_URL = `${API_BASE_URL}/api/projects`;
+  const USERS_API_URL = `${API_BASE_URL}/api/users`;
 
   const loadData = () => {
     if (!currentUser?.id) return;

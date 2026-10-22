@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE_URL } from '../config';
 
 function TasksBoard({ currentUser }) {
   const navigate = useNavigate();
@@ -8,8 +9,8 @@ function TasksBoard({ currentUser }) {
   const [users, setUsers] = useState([]);
   const [newTask, setNewTask] = useState({ title: '', description: '', assigneeUsername: '' });
 
-  const API_URL = 'http://localhost:8080/api/tasks';
-  const USERS_API_URL = 'http://localhost:8080/api/users';
+  const API_URL = `${API_BASE_URL}/api/tasks`;
+  const USERS_API_URL = `${API_BASE_URL}/api/users`;
   const columns = ['PRIMIT', 'IN_LUCRU', 'TERMINAT', 'ANULAT'];
 
   const fetchTasks = () => {
