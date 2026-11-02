@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { API_BASE_URL, WS_BASE_URL } from '../config';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client/dist/sockjs.min.js';
 
@@ -9,6 +9,8 @@ const avatarColor = (name) => COLORS[(name?.charCodeAt(0) || 0) % COLORS.length]
 
 function MessagesPage({ currentUser }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const targetUserId = searchParams.get('userId');
 
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
@@ -73,6 +75,30 @@ function MessagesPage({ currentUser }) {
     fetchConversations();
     fetchUsers();
   }, [currentUser]);
+
+  // Deschidere automata din parametru ?userId=...
+  useEffect(() => {
+    if (!currentUser?.id || !targetUserId) return;
+    const otherId = parseInt(targetUserId, 10);
+    if (!otherId || otherId === currentUser.id) return;
+
+    fetch(`${API_CHAT}/direct`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: currentUser.id,
+        otherUserId: otherId
+      })
+    })
+      .then(r => r.json())
+      .then(conv => {
+        if (conv?.id) {
+          setActiveConversation(conv);
+          fetchConversations(conv.id);
+        }
+      })
+      .catch(console.error);
+  }, [currentUser?.id, targetUserId]);
 
   // 3. Setup global WebSocket for user notifications
   useEffect(() => {

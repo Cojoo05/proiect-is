@@ -1,10 +1,17 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../config';
 
 const COLORS = ['#5a3d5c', '#2563eb', '#059669', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#4b5563'];
 const avatarColor = (name) => COLORS[(name?.charCodeAt(0) || 0) % COLORS.length];
 
 function MembersTab({ projectId, currentUser, isOwner, members, onMembersChange, onOpenInvite, channels = [] }) {
+  const navigate = useNavigate();
+
+  const handleOpenChatWithUser = (userId) => {
+    if (!userId) return;
+    navigate(`/messages?userId=${userId}`);
+  };
   const [subTab, setSubTab] = useState('members'); // 'members' | 'roles'
   const [roles, setRoles] = useState([]);
   const [editingRole, setEditingRole] = useState(null); // role object or null
@@ -328,7 +335,39 @@ function MembersTab({ projectId, currentUser, isOwner, members, onMembersChange,
                   </div>
 
                   {/* Role picker and actions */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {/* Buton Deschide Conversatie */}
+                    {u?.id && u.id !== currentUser?.id && (
+                      <button
+                        onClick={() => handleOpenChatWithUser(u.id)}
+                        style={{
+                          padding: '6px 12px',
+                          backgroundColor: '#f8fafc',
+                          color: '#5a3d5c',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          transition: 'all 0.15s'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#5a3d5c';
+                          e.currentTarget.style.color = '#ffffff';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = '#f8fafc';
+                          e.currentTarget.style.color = '#5a3d5c';
+                        }}
+                        title={`Deschide conversația cu ${name}`}
+                      >
+                        <span>💬</span> Mesaj
+                      </button>
+                    )}
+
                     {isMemberOwner ? (
                       <span
                         style={{

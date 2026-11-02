@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL, WS_BASE_URL } from '../../config';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client/dist/sockjs.min.js';
@@ -7,6 +8,7 @@ const COLORS = ['#5a3d5c', '#2563eb', '#059669', '#d97706', '#dc2626', '#7c3aed'
 const avatarColor = (name) => COLORS[(name?.charCodeAt(0) || 0) % COLORS.length];
 
 function FeedTab({ projectId, currentUser, isOwner, onSwitchTab, permissions = {} }) {
+  const navigate = useNavigate();
   const [channels, setChannels] = useState([]);
   const [activeChannel, setActiveChannel] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -267,7 +269,26 @@ function FeedTab({ projectId, currentUser, isOwner, onSwitchTab, permissions = {
                     {showHeader && (
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}>
                         <span style={{ fontWeight: '700', fontSize: '14px', color: '#1e293b' }}>{name}</span>
-                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>{formatDate(msg.sentAt)} {formatTime(msg.sentAt)}</span>
+                      <span style={{ fontSize: '11px', color: '#94a3b8' }}>{formatDate(msg.sentAt)} {formatTime(msg.sentAt)}</span>
+                      {msg.sender?.id && msg.sender.id !== currentUser?.id && (
+                        <button
+                          onClick={() => navigate(`/messages?userId=${msg.sender.id}`)}
+                          style={{
+                            border: 'none',
+                            background: 'none',
+                            cursor: 'pointer',
+                            fontSize: '11px',
+                            color: '#5a3d5c',
+                            fontWeight: '600',
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            backgroundColor: '#f1f5f9'
+                          }}
+                          title={`Scrie-i în privat lui ${name}`}
+                        >
+                          💬 Mesaj
+                        </button>
+                      )}
                       </div>
                     )}
                     <div
@@ -332,6 +353,25 @@ function FeedTab({ projectId, currentUser, isOwner, onSwitchTab, permissions = {
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '2px' }}>
                       <span style={{ fontWeight: '700', fontSize: '14px', color: '#1e293b' }}>{name}</span>
                       <span style={{ fontSize: '11px', color: '#94a3b8' }}>{formatDate(msg.sentAt)} {formatTime(msg.sentAt)}</span>
+                      {msg.sender?.id && msg.sender.id !== currentUser?.id && (
+                        <button
+                          onClick={() => navigate(`/messages?userId=${msg.sender.id}`)}
+                          style={{
+                            border: 'none',
+                            background: 'none',
+                            cursor: 'pointer',
+                            fontSize: '11px',
+                            color: '#5a3d5c',
+                            fontWeight: '600',
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            backgroundColor: '#f1f5f9'
+                          }}
+                          title={`Scrie-i în privat lui ${name}`}
+                        >
+                          💬 Mesaj
+                        </button>
+                      )}
                     </div>
                   )}
                   <div style={{ fontSize: '14px', color: '#334155', lineHeight: '1.5', wordBreak: 'break-word' }}>
