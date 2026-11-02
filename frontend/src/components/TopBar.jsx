@@ -6,13 +6,15 @@ import { Client } from '@stomp/stompjs';
 
 const POLL_INTERVAL = 15_000;
 
-export default function TopBar({ currentUser }) {
+export default function TopBar({ currentUser, setCurrentUser }) {
   const navigate = useNavigate();
 
   const [open, setOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [invitations, setInvitations] = useState([]);
   const [unreadMessages, setUnreadMessages] = useState([]);
   const dropdownRef = useRef(null);
+  const profileRef = useRef(null);
   const stompClientRef = useRef(null);
 
   const totalCount = invitations.length + unreadMessages.length;
@@ -82,16 +84,27 @@ export default function TopBar({ currentUser }) {
     };
   }, [currentUser?.id, fetchUnreadMessages]);
 
-  // ── Close dropdown on outside click ───────────────────────────────────────
+  // ── Close dropdowns on outside click ─────────────────────────────────────
   useEffect(() => {
     const handleOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setOpen(false);
       }
+      if (profileRef.current && !profileRef.current.contains(e.target)) {
+        setProfileOpen(false);
+      }
     };
-    if (open) document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
-  }, [open]);
+  }, []);
+
+  // ── Logout ────────────────────────────────────────────────────────────────
+  const handleLogout = () => {
+    setProfileOpen(false);
+    localStorage.removeItem('currentUser');
+    if (setCurrentUser) setCurrentUser(null);
+    navigate('/login');
+  };
 
   // ── Accept / Decline invitation ───────────────────────────────────────────
   const handleAccept = async (invitationId) => {
@@ -313,28 +326,132 @@ export default function TopBar({ currentUser }) {
         )}
       </div>
 
-      {/* ── Account icon (non-functional) ───────────────────────────────── */}
-      <div
-        title={currentUser?.username || currentUser?.email || 'Cont'}
-        style={{
-          width: '38px',
-          height: '38px',
-          borderRadius: '50%',
-          border: '1px solid #d8b4e2',
-          backgroundColor: '#5a3d5c',
-          color: '#ffffff',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '15px',
-          fontWeight: '700',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-          cursor: 'default',
-          userSelect: 'none',
-          flexShrink: 0,
-        }}
-      >
-        {(currentUser?.username || currentUser?.email || 'U')[0].toUpperCase()}
+      {/* ── Account icon + profile dropdown ─────────────────────────── */}
+      <div ref={profileRef} style={{ position: 'relative' }}>
+        <div
+          onClick={() => setProfileOpen(o => !o)}
+          title={currentUser?.username || currentUser?.email || 'Cont'}
+          style={{
+            width: '38px',
+            height: '38px',
+            borderRadius: '50%',
+            border: profileOpen ? '2px solid #5a3d5c' : '1px solid #d8b4e2',
+            backgroundColor: '#5a3d5c',
+            color: '#ffffff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '15px',
+            fontWeight: '700',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+            cursor: 'pointer',
+            userSelect: 'none',
+            flexShrink: 0,
+            transition: 'border 0.15s, box-shadow 0.15s',
+          }}
+        >
+          {(currentUser?.username || currentUser?.email || 'U')[0].toUpperCase()}
+        </div>
+
+        {/* Profile dropdown */}
+        {profileOpen && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '46px',
+              right: 0,
+              width: '200px',
+              backgroundColor: '#ffffff',
+              borderRadius: '10px',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
+              border: '1px solid #e2e8f0',
+              overflow: 'hidden',
+              fontFamily: 'sans-serif',
+              zIndex: 10000,
+            }}
+          >
+            {/* User info header */}
+            <div
+              style={{
+                padding: '14px 16px',
+                borderBottom: '1px solid #f1f5f9',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+              }}
+            >
+              <div
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  backgroundColor: '#5a3d5c',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: '700',
+                  fontSize: '14px',
+                  flexShrink: 0,
+                }}
+              >
+                {(currentUser?.username || currentUser?.email || 'U')[0].toUpperCase()}
+              </div>
+              <div style={{ overflow: 'hidden' }}>
+                <div
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    color: '#1e293b',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {currentUser?.username || 'User'}
+                </div>
+                <div
+                  style={{
+                    fontSize: '11px',
+                    color: '#94a3b8',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {currentUser?.email || ''}
+                </div>
+              </div>
+            </div>
+
+            {/* Menu items */}
+            <div style={{ padding: '6px 0' }}>
+              <button
+                onClick={handleLogout}
+                style={{
+                  width: '100%',
+                  padding: '9px 16px',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#ef4444',
+                  fontWeight: '500',
+                  textAlign: 'left',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#fef2f2')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                <span style={{ fontSize: '15px' }}>🚪</span>
+                Logout
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

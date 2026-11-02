@@ -18,7 +18,7 @@ import './App.css';
 function AuthLayout({ currentUser, setCurrentUser, children }) {
   return (
     <>
-      <TopBar currentUser={currentUser} />
+      <TopBar currentUser={currentUser} setCurrentUser={setCurrentUser} />
       <Outlet context={{ currentUser, setCurrentUser }} />
     </>
   );
