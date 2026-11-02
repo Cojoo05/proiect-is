@@ -15,7 +15,7 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/api/projects")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(originPatterns = {"http://localhost:*", "http://127.0.0.1:*", "https://*.vercel.app"})
 public class PollController {
 
     private final PollRepository pollRepo;

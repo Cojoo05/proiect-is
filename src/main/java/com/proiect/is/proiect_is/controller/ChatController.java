@@ -17,7 +17,7 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/api/chat")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(originPatterns = {"http://localhost:*", "http://127.0.0.1:*", "https://*.vercel.app"})
 public class ChatController {
 
     private final ConversationRepository conversationRepo;
