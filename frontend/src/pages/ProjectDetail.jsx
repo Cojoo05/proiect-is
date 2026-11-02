@@ -6,12 +6,14 @@ import TasksTab from './ProjectTabs/TasksTab';
 import FilesTab from './ProjectTabs/FilesTab';
 import PollsTab from './ProjectTabs/PollsTab';
 import MembersTab from './ProjectTabs/MembersTab';
+import DecisionGraphTab from './ProjectTabs/DecisionGraphTab';
 
 const TABS = [
   { key: 'feed', label: '💬 Feed' },
   { key: 'tasks', label: '✅ Tasks' },
   { key: 'files', label: '📁 Files' },
   { key: 'polls', label: '📊 Polls' },
+  { key: 'graph', label: '🌳 Graf Decizie' },
   { key: 'members', label: '👥 Membri' },
 ];
 
@@ -229,6 +231,13 @@ function ProjectDetail({ currentUser }) {
       )}
       {activeTab === 'polls' && (
         <PollsTab
+          projectId={projectId}
+          currentUser={currentUser}
+          permissions={permissions}
+        />
+      )}
+      {activeTab === 'graph' && (
+        <DecisionGraphTab
           projectId={projectId}
           currentUser={currentUser}
           permissions={permissions}
