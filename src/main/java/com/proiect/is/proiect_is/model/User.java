@@ -1,5 +1,6 @@
 package com.proiect.is.proiect_is.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 
 @Entity
@@ -16,11 +17,15 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @Column(nullable = false)
     private String password;
 
     @Column(nullable = false)
     private String role;
+
+    @Transient
+    private Boolean hasAdminAccess = false;
 
     public Long getId() {
         return id;
@@ -60,5 +65,13 @@ public class User {
 
     public void setUsername(String username) {
         this.username = username;
+    }
+
+    public Boolean getHasAdminAccess() {
+        return hasAdminAccess;
+    }
+
+    public void setHasAdminAccess(Boolean hasAdminAccess) {
+        this.hasAdminAccess = hasAdminAccess;
     }
 }
