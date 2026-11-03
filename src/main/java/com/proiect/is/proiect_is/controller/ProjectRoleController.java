@@ -25,6 +25,9 @@ public class ProjectRoleController {
     private final ProjectRepository projectRepo;
 
     @Autowired
+    private org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
+
+    @Autowired
     public ProjectRoleController(ProjectRoleRepository roleRepo,
                                  ProjectMemberRepository memberRepo,
                                  ProjectRepository projectRepo) {
@@ -125,7 +128,11 @@ public class ProjectRoleController {
         role.setCanInviteMembers(request.isCanInviteMembers());
         role.setAllowedChannels(request.getAllowedChannels() != null ? request.getAllowedChannels() : "ALL");
 
-        return ResponseEntity.ok(roleRepo.save(role));
+        ProjectRole saved = roleRepo.save(role);
+        try {
+            messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/roles", saved);
+        } catch (Exception ignored) {}
+        return ResponseEntity.ok(saved);
     }
 
     // --- UPDATE ROLE ---
@@ -151,7 +158,13 @@ public class ProjectRoleController {
             role.setAllowedChannels(request.getAllowedChannels());
         }
 
-        return ResponseEntity.ok(roleRepo.save(role));
+        ProjectRole saved = roleRepo.save(role);
+        try {
+            messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/roles", saved);
+            messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/members", (Object) Map.of("action", "roles_updated"));
+        } catch (Exception ignored) {}
+
+        return ResponseEntity.ok(saved);
     }
 
     // --- DELETE ROLE ---
@@ -172,6 +185,11 @@ public class ProjectRoleController {
         }
 
         roleRepo.delete(role);
+        try {
+            messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/roles", (Object) Map.of("action", "delete", "roleId", roleId));
+            messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/members", (Object) Map.of("action", "roles_updated"));
+        } catch (Exception ignored) {}
+
         return ResponseEntity.ok().build();
     }
 
@@ -199,7 +217,12 @@ public class ProjectRoleController {
             member.setProjectRole(null);
         }
 
-        return ResponseEntity.ok(memberRepo.save(member));
+        ProjectMember saved = memberRepo.save(member);
+        try {
+            messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/members", saved);
+        } catch (Exception ignored) {}
+
+        return ResponseEntity.ok(saved);
     }
 
     // --- REMOVE MEMBER FROM PROJECT ---
@@ -214,6 +237,10 @@ public class ProjectRoleController {
         }
 
         memberRepo.delete(member);
+        try {
+            messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/members", (Object) Map.of("action", "remove", "memberId", memberId));
+        } catch (Exception ignored) {}
+
         return ResponseEntity.ok().build();
     }
 }

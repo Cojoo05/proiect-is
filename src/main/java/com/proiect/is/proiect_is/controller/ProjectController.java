@@ -6,10 +6,12 @@ import com.proiect.is.proiect_is.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -22,6 +24,9 @@ public class ProjectController {
     private final ProjectMemberRepository projectMemberRepository;
     private final ProjectInvitationRepository projectInvitationRepository;
     private final UserRepository userRepository;
+
+    @Autowired
+    private SimpMessagingTemplate messagingTemplate;
 
     @Autowired
     private TaskRepository taskRepository;
@@ -98,6 +103,11 @@ public class ProjectController {
         invitation.setCreatedAt(now);
         invitation.setExpiresAt(now.plusHours(48));
         ProjectInvitation saved = projectInvitationRepository.save(invitation);
+
+        try {
+            messagingTemplate.convertAndSend("/topic/users/" + invitedUser.getId() + "/invitations", saved);
+        } catch (Exception ignored) {}
+
         return ResponseEntity.ok(saved);
     }
 
@@ -167,7 +177,11 @@ public class ProjectController {
         member.setUser(invitation.getInvitedUser());
         member.setRole("MEMBER");
         member.setJoinedAt(LocalDateTime.now());
-        projectMemberRepository.save(member);
+        ProjectMember savedMember = projectMemberRepository.save(member);
+
+        try {
+            messagingTemplate.convertAndSend("/topic/projects/" + invitation.getProject().getId() + "/members", savedMember);
+        } catch (Exception ignored) {}
 
         return ResponseEntity.ok().build();
     }
@@ -206,6 +220,14 @@ public class ProjectController {
         }
 
         projectMemberRepository.delete(member);
+
+        try {
+            Map<String, Object> event = new HashMap<>();
+            event.put("action", "leave");
+            event.put("userId", userId);
+            messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/members", (Object) event);
+        } catch (Exception ignored) {}
+
         return ResponseEntity.ok(Map.of("message", "Ai părăsit proiectul cu succes."));
     }
 
