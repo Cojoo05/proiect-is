@@ -30,6 +30,11 @@ function App() {
     return savedUser ? JSON.parse(savedUser) : null;
   });
 
+  const isAdmin = Boolean(
+    currentUser?.hasAdminAccess ||
+    currentUser?.role?.toUpperCase() === 'ADMIN'
+  );
+
   return (
     <BrowserRouter>
       <Routes>
@@ -49,7 +54,10 @@ function App() {
           }
         >
           <Route path="/dashboard" element={<Dashboard currentUser={currentUser} setCurrentUser={setCurrentUser} />} />
-          <Route path="/admin-panel" element={<AdminPanel />} />
+          <Route
+            path="/admin-panel"
+            element={isAdmin ? <AdminPanel currentUser={currentUser} /> : <Navigate to="/dashboard" replace />}
+          />
           <Route path="/tasks" element={<TasksBoard currentUser={currentUser} />} />
           <Route path="/projects" element={<ProjectsDashboard currentUser={currentUser} />} />
           <Route path="/projects/:projectId" element={<ProjectDetail currentUser={currentUser} />} />

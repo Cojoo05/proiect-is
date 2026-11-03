@@ -41,7 +41,12 @@ function Dashboard({ currentUser }) {
     }
   ];
 
-  if (currentUser?.role === 'ADMIN') {
+  const isAdmin = Boolean(
+    currentUser?.hasAdminAccess ||
+    currentUser?.role?.toUpperCase() === 'ADMIN'
+  );
+
+  if (isAdmin) {
     apps.push({
       id: 'admin-panel',
       title: 'Admin Panel',

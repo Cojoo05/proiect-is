@@ -24,6 +24,9 @@ public class User {
     @Column(nullable = false)
     private String role;
 
+    @Transient
+    private Boolean hasAdminAccess = false;
+
     public Long getId() {
         return id;
     }
@@ -62,5 +65,13 @@ public class User {
 
     public void setUsername(String username) {
         this.username = username;
+    }
+
+    public Boolean getHasAdminAccess() {
+        return hasAdminAccess;
+    }
+
+    public void setHasAdminAccess(Boolean hasAdminAccess) {
+        this.hasAdminAccess = hasAdminAccess;
     }
 }
