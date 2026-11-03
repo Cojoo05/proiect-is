@@ -41,9 +41,15 @@ public class UserController {
 
     @PostMapping
     public ResponseEntity<?> createUser(@RequestBody User user) {
-        if (user.getRole() == null || user.getRole().trim().isEmpty()) {
+        // Un cont nou creat primește strict rolul de bază "User", fără drepturi de admin
+        String requestedRole = user.getRole();
+        if (requestedRole == null || requestedRole.isBlank() || systemRoleService.hasAdminAccess(requestedRole)) {
             user.setRole("User");
+        } else {
+            user.setRole(requestedRole.trim());
         }
+
+        user.setHasAdminAccess(false);
 
         if (user.getPassword() != null && !user.getPassword().isEmpty()) {
             BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
@@ -51,7 +57,7 @@ public class UserController {
         }
 
         User saved = userRepository.save(user);
-        enrichUserRole(saved);
+        saved.setHasAdminAccess(false);
         return ResponseEntity.ok(saved);
     }
 

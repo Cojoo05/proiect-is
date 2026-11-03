@@ -5,7 +5,6 @@ import { API_BASE_URL } from '../config';
 function ProjectsDashboard({ currentUser }) {
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
-  const [invitations, setInvitations] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -23,13 +22,11 @@ function ProjectsDashboard({ currentUser }) {
 
     Promise.all([
       fetch(`${API_URL}/user/${currentUser.id}`).then((r) => r.json()),
-      fetch(`${API_URL}/invitations/user/${currentUser.id}`).then((r) => r.json()),
-      fetch(USERS_API_URL).then((r) => r.json()).catch(() => [])
+            fetch(USERS_API_URL).then((r) => r.json()).catch(() => [])
     ])
-      .then(([projectsData, invitationsData, usersData]) => {
+      .then(([projectsData, usersData]) => {
         setProjects(Array.isArray(projectsData) ? projectsData : []);
-        setInvitations(Array.isArray(invitationsData) ? invitationsData : []);
-        setAllUsers(Array.isArray(usersData) ? usersData.filter((u) => u.id !== currentUser.id) : []);
+                setAllUsers(Array.isArray(usersData) ? usersData.filter((u) => u.id !== currentUser.id) : []);
         setLoading(false);
       })
       .catch((err) => {
@@ -72,39 +69,6 @@ function ProjectsDashboard({ currentUser }) {
       .catch((err) => alert(err.message));
   };
 
-  const handleAcceptInvitation = (invitationId) => {
-    fetch(`${API_URL}/invitations/${invitationId}/accept`, { method: 'POST' })
-      .then((res) => {
-        if (!res.ok) throw new Error('Invitația a expirat sau nu mai este validă');
-        loadData();
-      })
-      .catch((err) => alert(err.message));
-  };
-
-  const handleDeclineInvitation = (invitationId) => {
-    fetch(`${API_URL}/invitations/${invitationId}/decline`, { method: 'POST' })
-      .then((res) => {
-        if (!res.ok) throw new Error('Eroare la refuzarea invitației');
-        setInvitations(invitations.filter((inv) => inv.id !== invitationId));
-      })
-      .catch((err) => alert(err.message));
-  };
-
-  const toggleUserSelection = (userId) => {
-    if (selectedUserIds.includes(userId)) {
-      setSelectedUserIds(selectedUserIds.filter((id) => id !== userId));
-    } else {
-      setSelectedUserIds([...selectedUserIds, userId]);
-    }
-  };
-
-  const calculateHoursLeft = (expiresAt) => {
-    if (!expiresAt) return 0;
-    const diffMs = new Date(expiresAt) - new Date();
-    const hours = Math.floor(diffMs / (1000 * 60 * 60));
-    return Math.max(0, hours);
-  };
-
   const formatDate = (isoString) => {
     if (!isoString) return '-';
     const date = new Date(isoString);
@@ -128,51 +92,6 @@ function ProjectsDashboard({ currentUser }) {
           + Create Project
         </button>
       </div>
-
-      {invitations.length > 0 && (
-        <div style={{ backgroundColor: '#fef3c7', border: '1px solid #fde68a', borderRadius: '10px', padding: '16px 20px', marginBottom: '30px' }}>
-          <h3 style={{ margin: '0 0 12px 0', color: '#92400e', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            📬 Invitații în așteptare ({invitations.length})
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {invitations.map((inv) => (
-              <div
-                key={inv.id}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  backgroundColor: 'white',
-                  padding: '12px 16px',
-                  borderRadius: '8px',
-                  border: '1px solid #fcd34d'
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: '600', color: '#1e293b' }}>{inv.project?.name}</div>
-                  <div style={{ fontSize: '13px', color: '#64748b' }}>
-                    Invitat de <strong>{inv.project?.owner?.username || inv.project?.owner?.email || 'Owner'}</strong> · expiră în {calculateHoursLeft(inv.expiresAt)}h
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    onClick={() => handleAcceptInvitation(inv.id)}
-                    style={{ padding: '6px 14px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
-                  >
-                    Acceptă
-                  </button>
-                  <button
-                    onClick={() => handleDeclineInvitation(inv.id)}
-                    style={{ padding: '6px 14px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
-                  >
-                    Refuză
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '50px', color: '#64748b' }}>Se încarcă proiectele...</div>

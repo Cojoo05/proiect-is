@@ -31,8 +31,8 @@ function App() {
   });
 
   const isAdmin = Boolean(
-    currentUser?.hasAdminAccess ||
-    currentUser?.role?.toUpperCase() === 'ADMIN'
+    currentUser?.hasAdminAccess === true ||
+    (currentUser?.role && currentUser.role.toUpperCase() === 'ADMIN' && currentUser.role.toUpperCase() !== 'USER')
   );
 
   return (
