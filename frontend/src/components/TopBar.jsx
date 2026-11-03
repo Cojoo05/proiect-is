@@ -283,8 +283,20 @@ export default function TopBar({ currentUser, setCurrentUser }) {
                   <div style={sectionLabelStyle}>Mesaje noi</div>
                   {unreadMessages.map(conv => {
                     const last = conv.lastMessage || conv.lastMsg;
-                    const senderName =
-                      last?.senderUsername ?? last?.sender?.username ?? 'Cineva';
+                    const otherUser = conv.participants?.find(
+                      p => Number(p.id) !== Number(currentUser?.id)
+                    );
+                    const rawSenderName =
+                      last?.senderName ||
+                      last?.senderUsername ||
+                      last?.sender?.username ||
+                      otherUser?.username ||
+                      (conv.name ? conv.name : 'Utilizator');
+
+                    const displayName = conv.type === 'GROUP' && conv.name && rawSenderName !== conv.name
+                      ? `${rawSenderName} (${conv.name})`
+                      : rawSenderName;
+
                     const preview = last?.content ?? last?.text ?? '';
                     return (
                       <div
@@ -296,7 +308,7 @@ export default function TopBar({ currentUser, setCurrentUser }) {
                       >
                         <span style={{ fontSize: '20px', flexShrink: 0 }}>💬</span>
                         <div style={{ overflow: 'hidden' }}>
-                          <div style={notifTitleStyle}>{senderName}</div>
+                          <div style={notifTitleStyle}>{displayName}</div>
                           <div
                             style={{
                               ...notifSubStyle,
