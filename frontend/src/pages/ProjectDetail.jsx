@@ -114,6 +114,38 @@ function ProjectDetail({ currentUser }) {
   const memberIds = new Set(members.map(m => m.user?.id));
   const uninvitedUsers = allUsers.filter(u => !memberIds.has(u.id) && u.id !== currentUser?.id);
 
+  const handleDeleteProject = () => {
+    if (!currentUser?.id || !projectId) return;
+    if (!window.confirm(`Ești sigur că vrei să ștergi definitiv proiectul "${project?.name}"?\nToate task-urile, canalele, sondajele și datele asociate vor fi șterse ireversibil.`)) {
+      return;
+    }
+
+    fetch(`${API}/${projectId}?userId=${currentUser.id}`, { method: 'DELETE' })
+      .then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || 'Eroare la ștergerea proiectului');
+        alert('Proiectul a fost șters cu succes!');
+        navigate('/projects');
+      })
+      .catch(err => alert(err.message));
+  };
+
+  const handleLeaveProject = () => {
+    if (!currentUser?.id || !projectId) return;
+    if (!window.confirm(`Ești sigur că vrei să părăsești proiectul "${project?.name}"?`)) {
+      return;
+    }
+
+    fetch(`${API}/${projectId}/leave?userId=${currentUser.id}`, { method: 'POST' })
+      .then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || 'Eroare la părăsirea proiectului');
+        alert('Ai părăsit proiectul.');
+        navigate('/projects');
+      })
+      .catch(err => alert(err.message));
+  };
+
   if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Se încarcă proiectul...</div>;
   if (!project) return <div style={{ padding: '40px', textAlign: 'center', color: '#ef4444' }}>Proiectul nu a fost găsit.</div>;
 
@@ -174,6 +206,44 @@ function ProjectDetail({ currentUser }) {
               style={{ padding: '6px 12px', backgroundColor: '#5a3d5c', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', marginLeft: '6px' }}
             >
               + Invită
+            </button>
+          )}
+
+          {isOwner ? (
+            <button
+              onClick={handleDeleteProject}
+              style={{
+                padding: '6px 12px',
+                backgroundColor: '#fee2e2',
+                color: '#dc2626',
+                border: '1px solid #fecaca',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: '600',
+                marginLeft: '8px',
+              }}
+              title="Șterge definitiv proiectul (doar Owner)"
+            >
+              🗑️ Șterge Proiectul
+            </button>
+          ) : (
+            <button
+              onClick={handleLeaveProject}
+              style={{
+                padding: '6px 12px',
+                backgroundColor: '#fff1f2',
+                color: '#e11d48',
+                border: '1px solid #fecdd3',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: '600',
+                marginLeft: '8px',
+              }}
+              title="Părăsește acest proiect"
+            >
+              🚪 Părăsește Proiectul
             </button>
           )}
         </div>

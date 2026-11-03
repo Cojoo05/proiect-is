@@ -17,7 +17,7 @@ function Register() {
     fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...registerData, role: 'USER' })
+      body: JSON.stringify({ ...registerData, role: 'User' })
     })
     .then(res => {
       if (res.ok) {

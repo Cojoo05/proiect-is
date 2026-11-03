@@ -12,6 +12,8 @@ import java.util.List;
 @Repository
 public interface ProjectInvitationRepository extends JpaRepository<ProjectInvitation, Long> {
 
+    List<ProjectInvitation> findByProjectId(Long projectId);
+
     @Query("SELECT pi FROM ProjectInvitation pi " +
             "WHERE pi.invitedUser.id = :userId " +
             "AND pi.status = 'PENDING' " +

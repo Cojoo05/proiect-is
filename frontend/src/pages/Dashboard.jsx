@@ -1,13 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 
-function Dashboard({ currentUser, setCurrentUser }) {
+function Dashboard({ currentUser }) {
   const navigate = useNavigate();
-
-  const handleLogout = () => {
-    localStorage.removeItem('currentUser');
-    if (setCurrentUser) setCurrentUser(null);
-    navigate('/login');
-  };
 
   const apps = [
     {
@@ -47,7 +41,12 @@ function Dashboard({ currentUser, setCurrentUser }) {
     }
   ];
 
-  if (currentUser?.role === 'ADMIN') {
+  const isAdmin = Boolean(
+    currentUser?.hasAdminAccess === true ||
+    (currentUser?.role && currentUser.role.toUpperCase() === 'ADMIN' && currentUser.role.toUpperCase() !== 'USER')
+  );
+
+  if (isAdmin) {
     apps.push({
       id: 'admin-panel',
       title: 'Admin Panel',
@@ -93,25 +92,6 @@ function Dashboard({ currentUser, setCurrentUser }) {
             </span>
           </div>
         </div>
-
-        <button
-          onClick={handleLogout}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#f1f5f9',
-            color: '#475569',
-            border: '1px solid #cbd5e1',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: '500',
-            transition: 'background-color 0.15s'
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#e2e8f0')}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
-        >
-          Logout 🚪
-        </button>
       </header>
 
       <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '40px 24px' }}>
