@@ -7,10 +7,12 @@ import FilesTab from './ProjectTabs/FilesTab';
 import PollsTab from './ProjectTabs/PollsTab';
 import MembersTab from './ProjectTabs/MembersTab';
 import DecisionGraphTab from './ProjectTabs/DecisionGraphTab';
+import CalendarTab from './ProjectTabs/CalendarTab';
 
 const TABS = [
   { key: 'feed', label: '💬 Feed' },
   { key: 'tasks', label: '✅ Tasks' },
+  { key: 'calendar', label: '📅 Calendar' },
   { key: 'files', label: '📁 Files' },
   { key: 'polls', label: '📊 Polls' },
   { key: 'graph', label: '🌳 Graf Decizie' },
@@ -180,7 +182,7 @@ function ProjectDetail({ currentUser }) {
 
         {/* Members avatars */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <div style={{ display: 'flex' }} onClick={() => setActiveTab('members')} title="Vezi toți membrii" style={{ cursor: 'pointer', display: 'flex' }}>
+          <div style={{ cursor: 'pointer', display: 'flex' }} onClick={() => setActiveTab('members')} title="Vezi toți membrii">
             {members.slice(0, 5).map((m, i) => {
               const name = m.user?.username || m.user?.email || '?';
               const colors = ['#5a3d5c', '#2563eb', '#059669', '#d97706', '#dc2626'];
@@ -290,6 +292,13 @@ function ProjectDetail({ currentUser }) {
           currentUser={currentUser}
           members={members}
           permissions={permissions}
+        />
+      )}
+      {activeTab === 'calendar' && (
+        <CalendarTab
+          projectId={projectId}
+          currentUser={currentUser}
+          members={members}
         />
       )}
       {activeTab === 'files' && (
