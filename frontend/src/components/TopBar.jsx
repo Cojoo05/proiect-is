@@ -13,6 +13,7 @@ export default function TopBar({ currentUser, setCurrentUser }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [invitations, setInvitations] = useState([]);
   const [recentConversations, setRecentConversations] = useState([]);
+  const [calendarNotifs, setCalendarNotifs] = useState([]);
 
   // Map of convId -> lastMsgId that the user has marked as read
   const [readMsgIds, setReadMsgIds] = useState(() => {
@@ -63,7 +64,26 @@ export default function TopBar({ currentUser, setCurrentUser }) {
   }, [currentUser?.id, readMsgIds]);
 
   const unreadMsgCount = recentConversations.filter(isConvUnread).length;
-  const totalCount = invitations.length + unreadMsgCount;
+  const totalCount = invitations.length + unreadMsgCount + calendarNotifs.length;
+
+  // ── Fetch calendar notifications ─────────────────────────────────────────
+  const fetchCalendarNotifs = useCallback(async () => {
+    if (!currentUser?.id) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/notifications/user/${currentUser.id}/unread`);
+      if (res.ok) {
+        const data = await res.json();
+        setCalendarNotifs(Array.isArray(data) ? data : []);
+      }
+    } catch (_) {}
+  }, [currentUser?.id]);
+
+  const handleMarkNotifRead = async (notifId) => {
+    try {
+      await fetch(`${API_BASE_URL}/api/notifications/${notifId}/read`, { method: 'PUT' });
+      setCalendarNotifs(prev => prev.filter(n => n.id !== notifId));
+    } catch (_) {}
+  };
 
   // ── Fetch pending invitations ──────────────────────────────────────────────
   const fetchInvitations = useCallback(async () => {
@@ -112,6 +132,7 @@ export default function TopBar({ currentUser, setCurrentUser }) {
     if (!currentUser?.id) return;
     fetchInvitations();
     fetchRecentMessages();
+    fetchCalendarNotifs();
     const timer = setInterval(() => {
       fetchInvitations();
       fetchRecentMessages();
@@ -335,6 +356,48 @@ export default function TopBar({ currentUser, setCurrentUser }) {
 
             {/* Body */}
             <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
+
+                            {/* Calendar Notifications */}
+              {calendarNotifs.length > 0 && (
+                <div>
+                  <div style={sectionLabelStyle}>Invitații Ședințe Google Meet</div>
+                  {calendarNotifs.map(n => (
+                    <div key={n.id} style={notifRowStyle}>
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                        <span style={{ fontSize: '20px', flexShrink: 0 }}>🎥</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={notifTitleStyle}>{n.title}</div>
+                          <div style={notifSubStyle}>{n.message}</div>
+                          {n.eventDate && (
+                            <div style={{ fontSize: '11px', color: '#2563eb', fontWeight: '700', marginTop: '3px' }}>
+                              📅 {n.eventDate} {n.eventStartTime ? `la ${n.eventStartTime}` : ''}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '8px', paddingLeft: '30px' }}>
+                        {n.meetLink && (
+                          <a
+                            href={n.meetLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ ...acceptBtnStyle, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                            onClick={() => handleMarkNotifRead(n.id)}
+                          >
+                            🎥 Intră în Meet
+                          </a>
+                        )}
+                        <button
+                          onClick={() => handleMarkNotifRead(n.id)}
+                          style={declineBtnStyle}
+                        >
+                          Marchează citit
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Invitations */}
               {invitations.length > 0 && (

@@ -2,6 +2,7 @@ package com.proiect.is.proiect_is.controller;
 
 import com.proiect.is.proiect_is.model.CalendarEvent;
 import com.proiect.is.proiect_is.repository.CalendarEventRepository;
+import com.proiect.is.proiect_is.service.EmailService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -16,6 +17,9 @@ public class CalendarEventController {
 
     @Autowired
     private CalendarEventRepository calendarEventRepository;
+
+    @Autowired
+    private EmailService emailService;
 
     @GetMapping("/events")
     public List<CalendarEvent> getAllEvents() {
@@ -64,23 +68,68 @@ public class CalendarEventController {
             event.setCreatedAt(LocalDateTime.now());
         }
 
-        // Automatic video meeting link generator if flagged but no link provided
+        // Generare automată cod cameră și link Google Meet dacă e bifat
         if (Boolean.TRUE.equals(event.getHasVideoMeet())) {
             if (event.getMeetRoomCode() == null || event.getMeetRoomCode().trim().isEmpty()) {
-                String code = "is-room-" + UUID.randomUUID().toString().substring(0, 8);
+                String code = "is-meet-" + UUID.randomUUID().toString().substring(0, 8);
                 event.setMeetRoomCode(code);
             }
             if (event.getMeetLink() == null || event.getMeetLink().trim().isEmpty()) {
-                if ("Google Meet".equalsIgnoreCase(event.getMeetPlatform())) {
-                    event.setMeetLink("https://meet.google.com/new");
-                } else {
-                    event.setMeetLink("https://meet.jit.si/" + event.getMeetRoomCode());
-                }
+                event.setMeetLink("https://meet.google.com/new");
             }
         }
 
         CalendarEvent saved = calendarEventRepository.save(event);
+
+        // Dacă evenimentul are invitați (email-uri), trimitem automat invitațiile pe email
+        if (event.getAttendees() != null && !event.getAttendees().isBlank()) {
+            List<String> attendeeList = Arrays.stream(event.getAttendees().split(","))
+                    .map(String::trim)
+                    .filter(e -> e.contains("@"))
+                    .toList();
+
+            if (!attendeeList.isEmpty()) {
+                try {
+                    emailService.sendMeetingInvitation(
+                            attendeeList,
+                            saved.getTitle(),
+                            saved.getEventDate(),
+                            saved.getStartTime(),
+                            saved.getMeetLink(),
+                            "Echipa Proiect IS",
+                            saved.getDescription()
+                    );
+                } catch (Exception ignored) {}
+            }
+        }
+
         return ResponseEntity.ok(saved);
+    }
+
+    @PostMapping("/send-invite-email")
+    public ResponseEntity<Map<String, Object>> sendInviteEmail(@RequestBody Map<String, Object> payload) {
+        String eventTitle = (String) payload.get("eventTitle");
+        String eventDate = (String) payload.get("eventDate");
+        String startTime = (String) payload.get("startTime");
+        String meetLink = (String) payload.get("meetLink");
+        String senderName = (String) payload.get("senderName");
+        String description = (String) payload.get("description");
+
+        @SuppressWarnings("unchecked")
+        List<String> toEmails = payload.get("toEmails") instanceof List
+                ? (List<String>) payload.get("toEmails")
+                : Collections.emptyList();
+
+        boolean sent = emailService.sendMeetingInvitation(
+                toEmails, eventTitle, eventDate, startTime, meetLink, senderName, description
+        );
+
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("success", true);
+        resp.put("sentViaSmtp", sent);
+        resp.put("recipientsCount", toEmails.size());
+        resp.put("message", "Invitatii procesate pentru " + toEmails.size() + " destinatari.");
+        return ResponseEntity.ok(resp);
     }
 
     @PutMapping("/events/{id}")
@@ -124,20 +173,14 @@ public class CalendarEventController {
 
         String roomCode = "is-quick-" + UUID.randomUUID().toString().substring(0, 8);
         String finalTitle = (title != null && !title.trim().isEmpty()) ? title : "Ședință Rapidă";
-        String joinUrl;
-
-        if ("Google Meet".equalsIgnoreCase(platform)) {
-            joinUrl = "https://meet.google.com/new";
-        } else {
-            joinUrl = "https://meet.jit.si/" + roomCode;
-        }
+        String joinUrl = "https://meet.google.com/new";
 
         Map<String, Object> response = new HashMap<>();
         response.put("title", finalTitle);
         response.put("roomCode", roomCode);
-        response.put("platform", platform);
+        response.put("platform", "Google Meet");
         response.put("joinUrl", joinUrl);
-        response.put("inAppUrl", "https://meet.jit.si/" + roomCode);
+        response.put("inAppUrl", joinUrl);
         response.put("createdAt", LocalDateTime.now().toString());
 
         return ResponseEntity.ok(response);
