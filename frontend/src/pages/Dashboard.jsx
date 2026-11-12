@@ -38,6 +38,13 @@ function Dashboard({ currentUser }) {
       icon: '💬',
       description: 'Conversații și grupuri de comunicare în timp real',
       path: '/messages'
+    },
+    {
+      id: 'knowledge',
+      title: 'Knowledge',
+      icon: '🧠',
+      description: 'Bază de cunoștințe, documentație, imagini și materiale video',
+      path: '/knowledge'
     }
   ];
 

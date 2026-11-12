@@ -27,6 +27,9 @@ public class SystemRole {
     private boolean isDefault = false;
 
     @Column(nullable = false)
+    private boolean canCreateKnowledge = true;
+
+    @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
     public SystemRole() {}
@@ -94,5 +97,13 @@ public class SystemRole {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public boolean isCanCreateKnowledge() {
+        return canCreateKnowledge;
+    }
+
+    public void setCanCreateKnowledge(boolean canCreateKnowledge) {
+        this.canCreateKnowledge = canCreateKnowledge;
     }
 }
