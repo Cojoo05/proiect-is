@@ -2,16 +2,6 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../config';
 
-/* ───────────────────────── Categorii Activități ───────────────────────── */
-const CATEGORIES = {
-  meeting:      { label: 'Ședință / Sync Echipă',   color: '#3b82f6', bg: '#dbeafe', icon: '🤝' },
-  video_call:   { label: 'Google Meet',              color: '#8b5cf6', bg: '#ede9fe', icon: '🎥' },
-  deadline:     { label: 'Termen Limită / Predare',  color: '#ef4444', bg: '#fee2e2', icon: '🔥' },
-  consultation: { label: 'Laborator / Curs',         color: '#10b981', bg: '#d1fae5', icon: '🎓' },
-  presentation: { label: 'Prezentare & Demo',        color: '#f59e0b', bg: '#fef3c7', icon: '🚀' },
-  workshop:     { label: 'Workshop / Brainstorming', color: '#ec4899', bg: '#fce7f3', icon: '💡' }
-};
-
 /* ───────────────────────── Stiluri & Teme ─────────────────────────────── */
 const ACCENT          = '#5a3d5c';
 const ACCENT_LIGHT    = '#7c5a7e';
@@ -44,76 +34,18 @@ function getDayName(dateStr) {
   return days[new Date(dateStr).getDay()];
 }
 
-/**
- * Generează link pentru deschiderea Gmail Web Compose cu toate datele gata completate
- */
-function buildGmailComposeUrl(attendees, title, date, startTime, meetLink, description) {
-  const to = (attendees || '')
-    .split(',')
-    .map(e => e.trim())
-    .filter(e => e.includes('@'))
-    .join(',');
-
-  const subject = `Invitație Google Meet: ${title || 'Ședință Echipă'}`;
-
-  const body =
-`Salut!
-
-Ai fost invitat(ă) la o ședință pe Google Meet:
-
-📌 Titlu: ${title || 'Ședință'}
-📅 Dată: ${date || 'Stabilita de comun acord'}
-⏰ Oră: ${startTime || 'La timp'}
-${description ? `📝 Detalii / Agendă: ${description}\n` : ''}
-🎥 Link Google Meet pentru a intra în ședință:
-${meetLink || 'https://meet.google.com/new'}
-
-Apasă pe link-ul de mai sus la ora stabilită pentru a te alătura apelului.
-
-Echipa Proiect Ingineria Software`;
-
-  return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-}
-
-/**
- * Fallback mailto: pentru orice client nativ de email (Outlook, Thunderbird, Mail)
- */
-function buildMailtoUrl(attendees, title, date, startTime, meetLink, description) {
-  const to = (attendees || '')
-    .split(',')
-    .map(e => e.trim())
-    .filter(e => e.includes('@'))
-    .join(',');
-
-  const subject = `Invitație Google Meet: ${title || 'Ședință Echipă'}`;
-  const body =
-`Salut!
-
-Ai fost invitat(ă) la o ședință pe Google Meet:
-Titlu: ${title || 'Ședință'}
-Dată: ${date || ''} la ora ${startTime || ''}
-${description ? `Detalii: ${description}\n` : ''}
-Link Google Meet pentru a intra:
-${meetLink || 'https://meet.google.com/new'}
-
-Te așteptăm!`;
-
-  return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-}
-
 /* ══════════════════════════════════════════════════════════════════════════
    COMPONENTA PRINCIPALĂ CALENDAR
 ══════════════════════════════════════════════════════════════════════════ */
 function Calendar({ currentUser }) {
-  const navigate  = useNavigate();
-  const todayKey  = new Date().toISOString().split('T')[0];
+  const navigate = useNavigate();
+  const todayKey = new Date().toISOString().split('T')[0];
 
-  // Client ID din client_secret.json al proiectului
   const GOOGLE_CLIENT_ID = '600998152273-t58c63k8l1vk772cqrnhocil9f1qo35u.apps.googleusercontent.com';
   const CAL_API          = `${API_BASE_URL}/api/calendar`;
   const NOTIF_API        = `${API_BASE_URL}/api/notifications`;
 
-  /* ── Tab activ: 'month' (Calendar) | 'agenda' (Listă simplă) | 'meets' (Google Meet Hub) ── */
+  /* ── Tab activ: 'month' (Calendar) | 'agenda' (Agendă) | 'meets' (Google Meet Hub) ── */
   const [activeTab, setActiveTab] = useState('month');
 
   /* ── Navigare Calendar ── */
@@ -121,7 +53,7 @@ function Calendar({ currentUser }) {
   const [selectedDate, setSelectedDate] = useState(todayKey);
   const [nowTime,      setNowTime]      = useState(new Date());
 
-  /* ── Lista de evenimente ── */
+  /* ── Lista Evenimente ── */
   const [events, setEvents] = useState(() => {
     try {
       const saved = localStorage.getItem('calendar_local_events');
@@ -135,29 +67,25 @@ function Calendar({ currentUser }) {
   const [inspectorOpen,  setInspectorOpen]  = useState(false);
   const [showMeetModal,  setShowMeetModal]  = useState(false);
   const [toastMessage,   setToastMessage]   = useState('');
-  const [toastType,      setToastType]      = useState('info');
+  const [toastType,      setToastType]      = useState('success');
   const [loading,        setLoading]        = useState(false);
   const [hoveredDay,     setHoveredDay]     = useState(null);
 
-  /* ── Email Invite Success Dialog ── */
-  const [emailInviteModal, setEmailInviteModal] = useState(null);
-
-  /* ── Filtre & Căutare ── */
-  const [searchQuery,          setSearchQuery]          = useState('');
-  const [activeCategoryFilter, setActiveCategoryFilter] = useState('all');
-  const [agendaTimeFilter,     setAgendaTimeFilter]     = useState('upcoming');
+  /* ── Căutare & Filtre Rapide (Maxim 3 opțiuni, fără dropdown stufos) ── */
+  const [searchQuery, setSearchQuery] = useState('');
+  // quickFilter: 'all' (Toate) | 'meets' (Doar Meet) | 'today' (Azi)
+  const [quickFilter, setQuickFilter] = useState('all');
 
   /* ── Google OAuth Token ── */
   const [googleToken, setGoogleToken] = useState(() => localStorage.getItem('google_access_token') || null);
   const [tokenClient, setTokenClient] = useState(null);
 
-  /* ── Formular Simplificat (FĂRĂ PRIORITATE) ── */
+  /* ── Formular Simplu (FĂRĂ PRIORITATE, FĂRĂ TIP ACTIVITATE) ── */
   const emptyForm = {
     title: '',
     startTime: '10:00',
     endTime: '11:00',
     allDay: false,
-    category: 'video_call',
     hasGoogleMeet: true,
     meetLink: '',
     attendees: '',
@@ -167,7 +95,7 @@ function Calendar({ currentUser }) {
   };
   const [eventForm, setEventForm] = useState(emptyForm);
 
-  /* ── Date pentru grila lunară ── */
+  /* ── Date pentru Grila Calendarului ── */
   const year  = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
@@ -179,19 +107,19 @@ function Calendar({ currentUser }) {
 
   /* ════════════════ Efecte ════════════════ */
 
-  // Ceas live pentru evidențierea ședințelor în desfășurare
+  // Ceas live pentru evidențierea ședințelor live
   useEffect(() => {
     const t = setInterval(() => setNowTime(new Date()), 20000);
     return () => clearInterval(t);
   }, []);
 
-  // Salvare locală
+  // Salvare evenimente locale
   useEffect(() => {
     const local = events.filter(e => !e.isGoogle);
     localStorage.setItem('calendar_local_events', JSON.stringify(local));
   }, [events]);
 
-  // Încărcare evenimente din backend
+  // Încărcare din backend
   useEffect(() => {
     fetch(`${CAL_API}/events`)
       .then(r => r.ok ? r.json() : [])
@@ -208,7 +136,6 @@ function Calendar({ currentUser }) {
             startTime:    b.startTime  || '10:00',
             endTime:      b.endTime    || '11:00',
             allDay:       Boolean(b.allDay),
-            category:     b.category   || 'video_call',
             recurrence:   b.recurrence || 'none',
             hasGoogleMeet: Boolean(b.hasVideoMeet || b.meetLink),
             meetLink:     b.meetLink   || '',
@@ -225,7 +152,7 @@ function Calendar({ currentUser }) {
       .catch(() => {});
   }, [CAL_API]);
 
-  // Inițializare Google Identity Services OAuth
+  // Google OAuth GSI
   useEffect(() => {
     const initGsi = () => {
       if (window.google?.accounts?.oauth2) {
@@ -240,14 +167,12 @@ function Calendar({ currentUser }) {
               if (resp?.access_token) {
                 setGoogleToken(resp.access_token);
                 localStorage.setItem('google_access_token', resp.access_token);
-                showToast('✅ Conectat cu Google Calendar!', 'info');
+                showToast('✅ Conectat cu Google Calendar!', 'success');
               }
             }
           });
           setTokenClient(client);
-        } catch (err) {
-          console.warn('Google GSI init err:', err);
-        }
+        } catch (_) {}
       }
     };
     initGsi();
@@ -260,17 +185,17 @@ function Calendar({ currentUser }) {
     if (googleToken) fetchGoogleEvents();
   }, [googleToken, year, month]);
 
-  /* ════════════════ Toast Alert ════════════════ */
-  const showToast = useCallback((msg, type = 'info') => {
+  /* ════════════════ Toast Notificare ════════════════ */
+  const showToast = useCallback((msg, type = 'success') => {
     setToastMessage(msg);
     setToastType(type);
     setTimeout(() => setToastMessage(''), 4500);
   }, []);
 
-  const copyToClipboard = (text, label = 'Link copiat!') => {
+  const copyToClipboard = (text, label = '📋 Link copiat!') => {
     if (!text) return;
     navigator.clipboard.writeText(text).catch(() => {});
-    showToast(label);
+    showToast(label, 'success');
   };
 
   /* ════════════════ Google Calendar Fetch ════════════════ */
@@ -310,7 +235,6 @@ function Calendar({ currentUser }) {
             startTime:    isAllDay ? '00:00' : startRaw.split('T')[1].substring(0, 5),
             endTime:      isAllDay ? '23:59' : (endRaw ? endRaw.split('T')[1].substring(0, 5) : ''),
             allDay:       isAllDay,
-            category:     meetUri ? 'video_call' : 'meeting',
             hasGoogleMeet: Boolean(meetUri),
             meetLink:     meetUri,
             attendees:    item.attendees ? item.attendees.map(a => a.email).join(', ') : '',
@@ -320,16 +244,13 @@ function Calendar({ currentUser }) {
         setEvents(prev => [...prev.filter(e => !e.isGoogle), ...parsed]);
         showToast('🔄 Calendar sincronizat cu Google!');
       })
-      .catch(err => console.warn('Google sync err:', err))
+      .catch(() => {})
       .finally(() => setLoading(false));
   };
 
   const handleGoogleAuth = () => {
-    if (tokenClient) {
-      tokenClient.requestAccessToken({ prompt: 'consent' });
-    } else {
-      alert('Modulul Google se încarcă. Dacă problema persistă, reîmprospătează pagina (F5).');
-    }
+    if (tokenClient) tokenClient.requestAccessToken({ prompt: 'consent' });
+    else alert('Modulul Google se încarcă. Reîmprospătează pagina (F5).');
   };
 
   const handleDisconnectGoogle = () => {
@@ -339,95 +260,35 @@ function Calendar({ currentUser }) {
     showToast('Deconectat de la Google Calendar.');
   };
 
-  /* ════════════════ Creare Eveniment Google Calendar (API cu Meet & Email Invite) ════════════════ */
-  const createGoogleCalendarEvent = async (form, dateStr) => {
-    if (!googleToken) return null;
+  /* ════════════════ Trimitere Automată Invitații pe Email (noreply) ════════════════ */
+  const sendEmailInvitesAutomatically = async (title, dateStr, startTime, meetLink, attendeesStr, description) => {
+    if (!attendeesStr || !attendeesStr.trim()) return false;
 
-    const attendeeList = form.attendees
-      ? form.attendees
-          .split(',')
-          .map(e => e.trim())
-          .filter(e => e.includes('@'))
-          .map(email => ({ email }))
-      : [];
-
-    let startObj, endObj;
-    if (form.allDay) {
-      startObj = { date: dateStr };
-      endObj   = { date: dateStr };
-    } else {
-      const startIso = new Date(`${dateStr}T${form.startTime}:00`).toISOString();
-      const endIso   = new Date(`${dateStr}T${form.endTime}:00`).toISOString();
-      startObj = { dateTime: startIso };
-      endObj   = { dateTime: endIso };
-    }
-
-    const payload = {
-      summary:     form.title,
-      description: form.description || '',
-      location:    form.location || '',
-      start:       startObj,
-      end:         endObj,
-      attendees:   attendeeList.length > 0 ? attendeeList : undefined
-    };
-
-    if (form.hasGoogleMeet) {
-      payload.conferenceData = {
-        createRequest: {
-          requestId: `meet-${Date.now()}`,
-          conferenceSolutionKey: { type: 'hangoutsMeet' }
-        }
-      };
-    }
-
-    try {
-      const res = await fetch(
-        'https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all',
-        {
-          method:  'POST',
-          headers: {
-            Authorization:  `Bearer ${googleToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(payload)
-        }
-      );
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch (e) {
-      console.warn('Google Calendar create failed:', e);
-    }
-    return null;
-  };
-
-  /* ════════════════ Trimite Email & Notificări ════════════════ */
-  const dispatchMeetingInvites = async (form, dateStr, meetLink) => {
-    const attendeeList = (form.attendees || '')
+    const emailList = attendeesStr
       .split(',')
       .map(e => e.trim())
       .filter(e => e.includes('@'));
 
-    if (attendeeList.length === 0) return;
+    if (emailList.length === 0) return false;
 
-    // 1. Apel către backend Email Service (Spring Boot Mail)
+    // 1. Apel către backend Email Service (noreply@proiect-is.ro)
     try {
       await fetch(`${CAL_API}/send-invite-email`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          toEmails:    attendeeList,
-          eventTitle:  form.title,
+          toEmails:    emailList,
+          eventTitle:  title,
           eventDate:   dateStr,
-          startTime:   form.startTime,
+          startTime:   startTime,
           meetLink:    meetLink,
-          senderName:  currentUser?.username || currentUser?.email || 'Coleg Echipă',
-          description: form.description
+          senderName:  currentUser?.username || currentUser?.email || 'Echipa Proiect IS',
+          description: description
         })
       });
     } catch (_) {}
 
-    // 2. Apel către backend In-App Notifications
+    // 2. Apel către backend Notificări în aplicație
     try {
       await fetch(`${NOTIF_API}/calendar-invite`, {
         method:  'POST',
@@ -435,18 +296,65 @@ function Calendar({ currentUser }) {
         body: JSON.stringify({
           senderUserId:   currentUser?.id || null,
           senderName:     currentUser?.username || currentUser?.email || 'Utilizator',
-          eventTitle:     form.title,
+          eventTitle:     title,
           eventDate:      dateStr,
-          eventStartTime: form.startTime,
+          eventStartTime: startTime,
           meetLink:       meetLink,
-          attendeeEmails: attendeeList
+          attendeeEmails: emailList
         })
       });
     } catch (_) {}
+
+    // 3. Trimitere via Google Calendar API dacă utilizatorul este sincronizat
+    if (googleToken) {
+      try {
+        const startIso = new Date(`${dateStr}T${startTime}:00`).toISOString();
+        const endIso   = new Date(`${dateStr}T${startTime}:00`).toISOString();
+        await fetch(
+          'https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all',
+          {
+            method:  'POST',
+            headers: {
+              Authorization:  `Bearer ${googleToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              summary:     title,
+              description: description || '',
+              start:       { dateTime: startIso },
+              end:         { dateTime: endIso },
+              attendees:   emailList.map(email => ({ email })),
+              conferenceData: {
+                createRequest: {
+                  requestId: `meet-${Date.now()}`,
+                  conferenceSolutionKey: { type: 'hangoutsMeet' }
+                }
+              }
+            })
+          }
+        );
+      } catch (_) {}
+    }
+
+    return true;
   };
 
-  /* ════════════════ CRUD & Salvare Eveniment ════════════════ */
+  /* ════════════════ Retrimitere Invitație (1-Click) ════════════════ */
+  const handleResendInvites = async (ev) => {
+    if (!ev.attendees) return;
+    const count = ev.attendees.split(',').filter(e => e.includes('@')).length;
+    await sendEmailInvitesAutomatically(
+      ev.title,
+      ev.date,
+      ev.startTime,
+      ev.meetLink || 'https://meet.google.com/new',
+      ev.attendees,
+      ev.description
+    );
+    showToast(`✅ Invitație trimisă automat pe email la ${count} colegi de pe noreply@proiect-is.ro!`);
+  };
 
+  /* ════════════════ CRUD Ședințe ════════════════ */
   const isMeetingLiveNow = (ev) => {
     if (ev.date !== todayKey || ev.allDay || !ev.startTime) return false;
     const nowHM = nowTime.toTimeString().substring(0, 5);
@@ -469,7 +377,6 @@ function Calendar({ currentUser }) {
       startTime:    ev.startTime    || '10:00',
       endTime:      ev.endTime      || '11:00',
       allDay:       Boolean(ev.allDay),
-      category:     ev.category     || 'video_call',
       hasGoogleMeet: Boolean(ev.meetLink || ev.hasGoogleMeet),
       meetLink:     ev.meetLink      || '',
       attendees:    ev.attendees     || '',
@@ -491,13 +398,12 @@ function Calendar({ currentUser }) {
       return;
     }
 
-    // Calcul link Meet
     let computedMeetLink = eventForm.meetLink.trim();
     if (eventForm.hasGoogleMeet && !computedMeetLink) {
       computedMeetLink = 'https://meet.google.com/new';
     }
 
-    // ── Editare eveniment existent ──
+    // Editare
     if (editingId) {
       setEvents(prev => prev.map(ev => ev.id === editingId
         ? { ...ev, ...eventForm, meetLink: computedMeetLink, date: selectedDate }
@@ -516,7 +422,6 @@ function Calendar({ currentUser }) {
             startTime:    eventForm.startTime,
             endTime:      eventForm.endTime,
             allDay:       eventForm.allDay,
-            category:     eventForm.category,
             hasVideoMeet: eventForm.hasGoogleMeet,
             meetLink:     computedMeetLink,
             location:     eventForm.location,
@@ -526,26 +431,11 @@ function Calendar({ currentUser }) {
       }
 
       setShowEventModal(false);
-      showToast('✅ Modificările au fost salvate!');
+      showToast('✅ Ședința a fost actualizată!');
       return;
     }
 
-    // ── Eveniment NOU ──
-    let googleEventCreated = false;
-
-    // 1. Încercare salvare pe Google Calendar dacă avem token activ
-    if (googleToken) {
-      const gcal = await createGoogleCalendarEvent(eventForm, selectedDate);
-      if (gcal) {
-        googleEventCreated = true;
-        const gMeet =
-          gcal.hangoutLink ||
-          gcal.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri;
-        if (gMeet) computedMeetLink = gMeet;
-      }
-    }
-
-    // 2. Salvare în backend
+    // Eveniment nou
     const baseItem = {
       id:           `local-${Date.now()}`,
       ...eventForm,
@@ -565,7 +455,6 @@ function Calendar({ currentUser }) {
           startTime:    eventForm.startTime,
           endTime:      eventForm.endTime,
           allDay:       eventForm.allDay,
-          category:     eventForm.category,
           hasVideoMeet: eventForm.hasGoogleMeet,
           meetLink:     computedMeetLink,
           location:     eventForm.location,
@@ -581,21 +470,19 @@ function Calendar({ currentUser }) {
 
     setEvents(prev => [...prev, baseItem]);
 
-    // 3. Trimitere Invitații pe Email & Notificări
+    // Trimitere automată invitații prin noreply
     const hasAttendees = Boolean(eventForm.attendees && eventForm.attendees.trim());
-    if (hasAttendees) {
-      await dispatchMeetingInvites(eventForm, selectedDate, computedMeetLink);
-
-      // Deschide modalul de confirmare email cu opțiunea de a trimite direct prin Gmail sau Mail Client
-      setEmailInviteModal({
-        title:       eventForm.title,
-        date:        selectedDate,
-        startTime:   eventForm.startTime,
-        meetLink:    computedMeetLink,
-        attendees:   eventForm.attendees,
-        description: eventForm.description,
-        googleSent:  googleEventCreated
-      });
+    if (hasAttendees && eventForm.sendEmailAutomatically) {
+      const count = eventForm.attendees.split(',').filter(e => e.includes('@')).length;
+      sendEmailInvitesAutomatically(
+        eventForm.title,
+        selectedDate,
+        eventForm.startTime,
+        computedMeetLink,
+        eventForm.attendees,
+        eventForm.description
+      );
+      showToast(`✅ Ședință salvată! Invitațiile pe email au fost trimise la ${count} colegi de pe noreply@proiect-is.ro!`);
     } else {
       showToast('✨ Ședință programată cu succes!');
     }
@@ -604,44 +491,41 @@ function Calendar({ currentUser }) {
   };
 
   const handleDeleteEvent = (ev) => {
-    if (!window.confirm(`Ștergi definitiv "${ev.title}"?`)) return;
+    if (!window.confirm(`Ștergi definitiv ședința "${ev.title}"?`)) return;
     if (ev.backendId) {
       fetch(`${CAL_API}/events/${ev.backendId}`, { method: 'DELETE' }).catch(() => {});
     }
     setEvents(prev => prev.filter(e => e.id !== ev.id));
-    showToast('Ședință ștearsă.');
+    showToast('Ședință eliminată.');
   };
 
-  /* ── Deschide direct Gmail cu invitația pre-completată ── */
-  const handleOpenGmailCompose = (title, date, startTime, meetLink, attendees, description) => {
-    const url = buildGmailComposeUrl(attendees, title, date, startTime, meetLink, description);
-    window.open(url, '_blank');
-    showToast('📧 S-a deschis Gmail cu invitația gata de trimis!');
-  };
-
-  /* ── Deschide clientul implicit de mail (mailto:) ── */
-  const handleOpenMailto = (title, date, startTime, meetLink, attendees, description) => {
-    const url = buildMailtoUrl(attendees, title, date, startTime, meetLink, description);
-    window.location.href = url;
-  };
-
-  /* ════════════════ Filtre & Derivate ════════════════ */
+  /* ════════════════ Filtrare & Căutare Fluentă ════════════════ */
   const firstDayOfMonth = new Date(year, month, 1).getDay();
   const startingOffset  = (firstDayOfMonth + 6) % 7;
   const daysInMonth     = new Date(year, month + 1, 0).getDate();
 
   const formatDateKey = (day) => `${year}-${pad2(month + 1)}-${pad2(day)}`;
 
+  // Filtrare simplificată (Toate / Doar Meet / Azi + Text Căutare)
   const filteredEvents = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     return events.filter(ev => {
-      const matchCat  = activeCategoryFilter === 'all' || ev.category === activeCategoryFilter;
-      const matchSrch =
-        ev.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ev.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ev.location?.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchCat && matchSrch;
+      // Filtru rapid (Maxim 3 opțiuni)
+      if (quickFilter === 'meets' && !ev.meetLink && !ev.hasGoogleMeet) return false;
+      if (quickFilter === 'today' && ev.date !== todayKey) return false;
+
+      // Căutare text (Instant eliminare/filtrare)
+      if (q) {
+        const matchesTitle = ev.title?.toLowerCase().includes(q);
+        const matchesDesc  = ev.description?.toLowerCase().includes(q);
+        const matchesLoc   = ev.location?.toLowerCase().includes(q);
+        const matchesAtt   = ev.attendees?.toLowerCase().includes(q);
+        if (!matchesTitle && !matchesDesc && !matchesLoc && !matchesAtt) return false;
+      }
+
+      return true;
     });
-  }, [events, activeCategoryFilter, searchQuery]);
+  }, [events, quickFilter, searchQuery, todayKey]);
 
   const selectedDayEvents = useMemo(() =>
     filteredEvents
@@ -650,26 +534,20 @@ function Calendar({ currentUser }) {
     [filteredEvents, selectedDate]
   );
 
-  const agendaEvents = useMemo(() => {
-    let evs = [...filteredEvents].sort(
+  const agendaEvents = useMemo(() =>
+    [...filteredEvents].sort(
       (a, b) => a.date.localeCompare(b.date) || (a.startTime || '').localeCompare(b.startTime || '')
-    );
-    if (agendaTimeFilter === 'upcoming') evs = evs.filter(e => e.date >= todayKey);
-    if (agendaTimeFilter === 'past')     evs = evs.filter(e => e.date < todayKey);
-    return evs;
-  }, [filteredEvents, agendaTimeFilter, todayKey]);
+    ),
+    [filteredEvents]
+  );
 
   const meetsEvents = useMemo(() =>
-    events.filter(e => Boolean(e.meetLink || e.hasGoogleMeet || e.category === 'video_call'))
+    events.filter(e => Boolean(e.meetLink || e.hasGoogleMeet))
           .sort((a, b) => a.date.localeCompare(b.date)),
     [events]
   );
 
-  const totalMonthEvents = events.filter(ev => ev.date.startsWith(`${year}-${pad2(month + 1)}`)).length;
-  const todayEventsCount = events.filter(ev => ev.date === todayKey).length;
-  const meetsCount       = meetsEvents.length;
-
-  /* ════════════════ Stiluri Input Simplificate ════════════════ */
+  /* ════════════════ Stiluri Input Curate ════════════════ */
   const inputStyle = {
     padding: '11px 14px',
     borderRadius: '10px',
@@ -702,18 +580,18 @@ function Calendar({ currentUser }) {
           backgroundColor: toastType === 'warn' ? '#78350f' : '#1e293b',
           color: '#ffffff', padding: '14px 22px', borderRadius: '12px',
           boxShadow: '0 12px 28px rgba(0,0,0,0.3)', zIndex: 99999,
-          fontWeight: '700', fontSize: '14px', maxWidth: '400px',
-          borderLeft: `5px solid ${toastType === 'warn' ? '#f59e0b' : '#a855f7'}`,
+          fontWeight: '700', fontSize: '14px', maxWidth: '420px',
+          borderLeft: `5px solid ${toastType === 'warn' ? '#f59e0b' : '#10b981'}`,
           lineHeight: 1.4
         }}>
           {toastMessage}
         </div>
       )}
 
-      {/* ══════════════════ BARA DE SUS (TOP BAR) ══════════════════ */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+      {/* ══════════════════ BARA DE SUS (TOP BAR - CURĂȚATĂ DE STATISTICI) ══════════════════ */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px', flexWrap: 'wrap', gap: '12px' }}>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+        <div>
           <button
             onClick={() => navigate('/dashboard')}
             style={{
@@ -725,20 +603,6 @@ function Calendar({ currentUser }) {
           >
             ⬅️ Înapoi la Dashboard
           </button>
-
-          {/* Statistici rapide */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '12px',
-            backgroundColor: '#ffffff', padding: '7px 16px',
-            borderRadius: '10px', border: CARD_BORDER,
-            fontSize: '13px', color: '#64748b', fontWeight: '600'
-          }}>
-            <span>📅 Luna: <strong style={{ color: ACCENT }}>{totalMonthEvents}</strong></span>
-            <span style={{ color: '#cbd5e1' }}>•</span>
-            <span>⭐ Azi: <strong style={{ color: '#0f172a' }}>{todayEventsCount}</strong></span>
-            <span style={{ color: '#cbd5e1' }}>•</span>
-            <span>🎥 Meet-uri: <strong style={{ color: '#7c3aed' }}>{meetsCount}</strong></span>
-          </div>
         </div>
 
         {/* Butoane de acțiune */}
@@ -753,7 +617,7 @@ function Calendar({ currentUser }) {
               gap: '6px', boxShadow: ACCENT_SHADOW
             }}
           >
-            ➕ Adaugă Eveniment / Meet
+            ➕ Adaugă Ședință / Meet
           </button>
 
           <button
@@ -802,17 +666,18 @@ function Calendar({ currentUser }) {
         </div>
       </div>
 
-      {/* ══════════════════ TAB-URILE PRINCIPALE ══════════════════ */}
+      {/* ══════════════════ TAB-URILE & BARA DE CĂUTARE FLUENTĂ ══════════════════ */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         borderBottom: '2px solid #e2e8f0', marginBottom: '20px',
-        flexWrap: 'wrap', gap: '10px'
+        flexWrap: 'wrap', gap: '12px'
       }}>
+        {/* Tab-uri principale */}
         <div style={{ display: 'flex', gap: '4px' }}>
           {[
             { id: 'month',  label: '📅 Vedere Lunară' },
-            { id: 'agenda', label: `📋 Agendă & Ședințe (${agendaEvents.length})` },
-            { id: 'meets',  label: `🎥 Google Meet Hub (${meetsCount})` }
+            { id: 'agenda', label: `📋 Agendă Ședințe (${filteredEvents.length})` },
+            { id: 'meets',  label: `🎥 Google Meet Hub (${meetsEvents.length})` }
           ].map(tab => (
             <button
               key={tab.id}
@@ -830,22 +695,69 @@ function Calendar({ currentUser }) {
           ))}
         </div>
 
-        {/* Căutare & Filtru tip activitate */}
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-          <input
-            type="text" placeholder="🔍 Caută ședință..."
-            value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-            style={{ ...inputStyle, width: '170px', padding: '7px 12px', fontSize: '13px' }}
-          />
-          <select
-            value={activeCategoryFilter} onChange={e => setActiveCategoryFilter(e.target.value)}
-            style={{ ...inputStyle, width: 'auto', padding: '7px 12px', fontSize: '13px', cursor: 'pointer', fontWeight: '700' }}
-          >
-            <option value="all">Toate tipurile</option>
-            {Object.entries(CATEGORIES).map(([k, v]) => (
-              <option key={k} value={k}>{v.icon} {v.label}</option>
+        {/* Căutare rapidă cu buton de eliminat text [✕] și exact 3 filtre simple */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap' }}>
+
+          {/* Câmp căutare fluent cu buton de clear instant [✕] ca la Ctrl+F */}
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <span style={{ position: 'absolute', left: '10px', fontSize: '14px', color: '#94a3b8', pointerEvents: 'none' }}>
+              🔍
+            </span>
+            <input
+              type="text"
+              placeholder="Caută ședință..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              style={{
+                ...inputStyle,
+                width: '185px',
+                paddingLeft: '32px',
+                paddingRight: searchQuery ? '28px' : '10px',
+                paddingTop: '8px',
+                paddingBottom: '8px',
+                fontSize: '13px'
+              }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                title="Șterge text căutare (Clear)"
+                style={{
+                  position: 'absolute', right: '8px', background: '#e2e8f0',
+                  border: 'none', borderRadius: '50%', width: '18px', height: '18px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '11px', fontWeight: '800', color: '#475569', cursor: 'pointer'
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* MAXIM 3 FILTRE SIMPLE (FĂRĂ DROPDOWN COMPLICAT DE CATEGORII) */}
+          <div style={{ display: 'flex', gap: '4px', backgroundColor: '#f1f5f9', padding: '3px', borderRadius: '10px' }}>
+            {[
+              { id: 'all',   label: 'Toate' },
+              { id: 'meets', label: '🎥 Meet' },
+              { id: 'today', label: '⭐ Azi' }
+            ].map(f => (
+              <button
+                key={f.id}
+                onClick={() => setQuickFilter(f.id)}
+                style={{
+                  padding: '5px 12px', border: 'none', borderRadius: '8px',
+                  cursor: 'pointer', fontWeight: '700', fontSize: '12px',
+                  backgroundColor: quickFilter === f.id ? '#ffffff' : 'transparent',
+                  color: quickFilter === f.id ? ACCENT : '#64748b',
+                  boxShadow: quickFilter === f.id ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                {f.label}
+              </button>
             ))}
-          </select>
+          </div>
+
         </div>
       </div>
 
@@ -879,7 +791,7 @@ function Calendar({ currentUser }) {
               </h2>
             </div>
             <span style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic' }}>
-              💡 Apasă pe o zi pentru detalii sau pentru a programa o ședință
+              Apasă pe o zi pentru a vedea detaliile
             </span>
           </div>
 
@@ -941,16 +853,15 @@ function Calendar({ currentUser }) {
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', overflow: 'hidden' }}>
                     {dayEvs.slice(0, 3).map(ev => {
-                      const cat    = CATEGORIES[ev.category] || CATEGORIES.video_call;
                       const isLive = isMeetingLiveNow(ev);
                       return (
                         <div
                           key={ev.id}
                           style={{
                             fontSize: '11px',
-                            backgroundColor: isLive ? '#fee2e2' : cat.bg,
-                            color: isLive ? '#dc2626' : cat.color,
-                            borderLeft: `3px solid ${isLive ? '#dc2626' : cat.color}`,
+                            backgroundColor: isLive ? '#fee2e2' : '#ede9fe',
+                            color: isLive ? '#dc2626' : '#6d28d9',
+                            borderLeft: `3px solid ${isLive ? '#dc2626' : '#7c3aed'}`,
                             padding: '2px 5px', borderRadius: '4px',
                             whiteSpace: 'nowrap', overflow: 'hidden',
                             textOverflow: 'ellipsis', fontWeight: '700'
@@ -974,36 +885,13 @@ function Calendar({ currentUser }) {
         </div>
       )}
 
-      {/* ══════════════════ TAB 2: AGENDĂ SIMPLIFICATĂ (FĂRĂ PRIORITATE) ══════════════════ */}
+      {/* ══════════════════ TAB 2: AGENDĂ ȘEDINȚE (SIMPLĂ, CURATĂ, RAPIDĂ) ══════════════════ */}
       {activeTab === 'agenda' && (
         <div>
-          {/* Bara de opțiuni agendă */}
-          <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            marginBottom: '16px', flexWrap: 'wrap', gap: '10px'
-          }}>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              {[
-                { id: 'upcoming', label: '📅 Viitoare' },
-                { id: 'all',      label: '📋 Toate' },
-                { id: 'past',     label: '📁 Trecute' }
-              ].map(f => (
-                <button
-                  key={f.id}
-                  onClick={() => setAgendaTimeFilter(f.id)}
-                  style={{
-                    padding: '8px 16px', borderRadius: '20px', border: 'none',
-                    cursor: 'pointer', fontWeight: '700', fontSize: '13px',
-                    backgroundColor: agendaTimeFilter === f.id ? ACCENT : '#f1f5f9',
-                    color: agendaTimeFilter === f.id ? '#fff' : '#64748b',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ margin: 0, fontSize: '17px', color: '#0f172a', fontWeight: '800' }}>
+              📋 Ședințe & Întâlniri Programate ({agendaEvents.length})
+            </h3>
             <button
               onClick={() => openAddModal()}
               style={{
@@ -1012,7 +900,7 @@ function Calendar({ currentUser }) {
                 fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
               }}
             >
-              ➕ Programează Ședință Nouă
+              ➕ Adaugă Ședință
             </button>
           </div>
 
@@ -1021,30 +909,24 @@ function Calendar({ currentUser }) {
               padding: '60px 20px', textAlign: 'center', color: '#94a3b8',
               backgroundColor: '#ffffff', borderRadius: CARD_RADIUS, border: CARD_BORDER
             }}>
-              <div style={{ fontSize: '44px', marginBottom: '12px' }}>
-                {agendaTimeFilter === 'upcoming' ? '🌱' : '📁'}
-              </div>
+              <div style={{ fontSize: '44px', marginBottom: '12px' }}>🌱</div>
               <p style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#475569' }}>
-                {agendaTimeFilter === 'upcoming'
-                  ? 'Nicio ședință sau activitate viitoare programată.'
-                  : 'Nicio activitate găsită.'}
+                Nicio ședință găsită {searchQuery ? `pentru "${searchQuery}"` : ''}.
               </p>
               <button
                 onClick={() => openAddModal()}
-                style={{ marginTop: '14px', padding: '9px 16px', background: ACCENT_GRADIENT, color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', cursor: 'pointer' }}
+                style={{ marginTop: '14px', padding: '9px 18px', background: ACCENT_GRADIENT, color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', cursor: 'pointer' }}
               >
-                + Adaugă Prima Ședință
+                + Adaugă Ședință
               </button>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {agendaEvents.map(ev => {
-                const cat     = CATEGORIES[ev.category] || CATEGORIES.video_call;
                 const isLive  = isMeetingLiveNow(ev);
                 const relDate = formatRelativeDate(ev.date);
                 const dayName = getDayName(ev.date);
                 const isPast  = ev.date < todayKey;
-                const hasMeet = Boolean(ev.meetLink || ev.hasGoogleMeet);
                 const meetUrl = ev.meetLink || 'https://meet.google.com/new';
 
                 return (
@@ -1053,14 +935,14 @@ function Calendar({ currentUser }) {
                     style={{
                       backgroundColor: '#ffffff', borderRadius: '14px',
                       border: CARD_BORDER,
-                      borderLeft: `5px solid ${isLive ? '#dc2626' : isPast ? '#94a3b8' : cat.color}`,
+                      borderLeft: `5px solid ${isLive ? '#dc2626' : isPast ? '#94a3b8' : '#7c3aed'}`,
                       boxShadow: CARD_SHADOW, padding: '16px 20px',
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                       gap: '16px', flexWrap: 'wrap',
                       opacity: isPast ? 0.75 : 1
                     }}
                   >
-                    {/* Detalii activitate */}
+                    {/* Detalii ședință */}
                     <div style={{ flex: 1, minWidth: '260px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>
@@ -1071,9 +953,11 @@ function Calendar({ currentUser }) {
                             🔴 LIVE ACUM
                           </span>
                         )}
-                        <span style={{ fontSize: '11px', backgroundColor: cat.bg, color: cat.color, padding: '2px 8px', borderRadius: '6px', fontWeight: '700' }}>
-                          {cat.icon} {cat.label}
-                        </span>
+                        {(ev.meetLink || ev.hasGoogleMeet) && (
+                          <span style={{ fontSize: '11px', backgroundColor: '#ede9fe', color: '#7c3aed', padding: '2px 8px', borderRadius: '6px', fontWeight: '700' }}>
+                            🎥 Google Meet
+                          </span>
+                        )}
                       </div>
 
                       {/* Orar și dată */}
@@ -1119,28 +1003,26 @@ function Calendar({ currentUser }) {
                       )}
                     </div>
 
-                    {/* Butoane acțiune: Google Meet + Trimite Email + Edit/Delete */}
+                    {/* Butoane acțiune: Google Meet + Retrimite Invitații pe Email (1-Click) */}
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                      {hasMeet && (
-                        <a
-                          href={meetUrl}
-                          target="_blank" rel="noreferrer"
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '6px',
-                            fontSize: '13px', backgroundColor: '#2563eb', color: '#ffffff',
-                            padding: '8px 14px', borderRadius: '8px', fontWeight: '700',
-                            textDecoration: 'none', whiteSpace: 'nowrap'
-                          }}
-                        >
-                          🎥 Intră în Meet
-                        </a>
-                      )}
+                      <a
+                        href={meetUrl}
+                        target="_blank" rel="noreferrer"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '6px',
+                          fontSize: '13px', backgroundColor: '#2563eb', color: '#ffffff',
+                          padding: '8px 14px', borderRadius: '8px', fontWeight: '700',
+                          textDecoration: 'none', whiteSpace: 'nowrap'
+                        }}
+                      >
+                        🎥 Intră în Meet
+                      </a>
 
-                      {/* Buton explicit pentru trimiterea email-ului cu link-ul Meet */}
+                      {/* Buton 1-Click: trimite automat pe email fără popup compose */}
                       {ev.attendees && (
                         <button
-                          onClick={() => handleOpenGmailCompose(ev.title, ev.date, ev.startTime, meetUrl, ev.attendees, ev.description)}
-                          title="Deschide email-ul pregătit în Gmail pentru a trimite link-ul de Meet"
+                          onClick={() => handleResendInvites(ev)}
+                          title="Trimite automat invitațiile pe email tuturor colegilor de pe noreply@proiect-is.ro"
                           style={{
                             display: 'inline-flex', alignItems: 'center', gap: '5px',
                             fontSize: '12px', backgroundColor: '#fef3c7', color: '#92400e',
@@ -1148,12 +1030,12 @@ function Calendar({ currentUser }) {
                             fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap'
                           }}
                         >
-                          📧 Trimite Email cu Meet
+                          📧 Retrimite Email
                         </button>
                       )}
 
                       <button
-                        onClick={() => copyToClipboard(meetUrl, '📋 Link Meet copiat!')}
+                        onClick={() => copyToClipboard(meetUrl)}
                         title="Copiază Link Meet"
                         style={{ padding: '7px 10px', backgroundColor: '#f8fafc', border: CARD_BORDER, borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}
                       >
@@ -1188,7 +1070,7 @@ function Calendar({ currentUser }) {
       {activeTab === 'meets' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: '20px', alignItems: 'start' }}>
 
-          {/* Card lansare rapidă Google Meet */}
+          {/* Card lansare rapidă */}
           <div style={{ backgroundColor: '#ffffff', borderRadius: CARD_RADIUS, padding: '28px', border: '1.5px solid #d8b4fe', boxShadow: '0 4px 16px rgba(124,58,237,0.08)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
               <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'linear-gradient(135deg, #f3e8ff, #ede9fe)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>
@@ -1247,13 +1129,11 @@ function Calendar({ currentUser }) {
 
           {/* Listă ședințe video planificate */}
           <div style={{ backgroundColor: '#ffffff', borderRadius: CARD_RADIUS, padding: '24px', border: CARD_BORDER, boxShadow: CARD_SHADOW }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '17px', color: '#1e293b', fontWeight: '800' }}>
-                📹 Ședințe Video Planificate ({meetsCount})
-              </h3>
-            </div>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '17px', color: '#1e293b', fontWeight: '800' }}>
+              📹 Ședințe Video Planificate ({meetsEvents.length})
+            </h3>
 
-            {meetsCount === 0 ? (
+            {meetsEvents.length === 0 ? (
               <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8' }}>
                 <div style={{ fontSize: '36px', marginBottom: '10px' }}>📹</div>
                 <p style={{ margin: 0, fontSize: '14px', fontWeight: '700' }}>
@@ -1317,11 +1197,11 @@ function Calendar({ currentUser }) {
 
                           {ev.attendees && (
                             <button
-                              onClick={() => handleOpenGmailCompose(ev.title, ev.date, ev.startTime, meetUrl, ev.attendees, ev.description)}
+                              onClick={() => handleResendInvites(ev)}
                               style={{ fontSize: '12px', backgroundColor: '#fef3c7', border: '1px solid #fde68a', color: '#92400e', padding: '6px 10px', borderRadius: '7px', cursor: 'pointer', fontWeight: '700' }}
-                              title="Trimite link-ul pe email"
+                              title="Retrimite invitația pe email"
                             >
-                              📧 Email
+                              📧 Retrimite
                             </button>
                           )}
                         </div>
@@ -1335,23 +1215,23 @@ function Calendar({ currentUser }) {
         </div>
       )}
 
-      {/* ══════════════════ MODAL SIMPLU PENTRU PROGRAMAT EVENIMENT / MEET ══════════════════ */}
+      {/* ══════════════════ MODAL SIMPLU: PROGRAMAT ȘEDINȚĂ / MEET ══════════════════ */}
       {showEventModal && (
         <div
           style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10001, padding: '20px' }}
           onClick={() => setShowEventModal(false)}
         >
           <div
-            style={{ backgroundColor: '#ffffff', borderRadius: '20px', padding: '28px', maxWidth: '520px', width: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 48px rgba(0,0,0,0.25)' }}
+            style={{ backgroundColor: '#ffffff', borderRadius: '20px', padding: '28px', maxWidth: '500px', width: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 48px rgba(0,0,0,0.25)' }}
             onClick={e => e.stopPropagation()}
           >
             {/* Titlu Modal */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '18px', color: '#0f172a', fontWeight: '800' }}>
-                  {editingId ? '✏️ Editează Ședința' : '➕ Programează Ședință / Eveniment'}
+                  {editingId ? '✏️ Editează Ședința' : '➕ Programează Ședință'}
                 </h3>
-                <span style={{ fontSize: '13px', color: '#64748b' }}>Completează detaliile pentru a trimite invitațiile</span>
+                <span style={{ fontSize: '13px', color: '#64748b' }}>Completează detaliile și invitațiile se trimit automat</span>
               </div>
               <button onClick={() => setShowEventModal(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8' }}>✕</button>
             </div>
@@ -1360,10 +1240,10 @@ function Calendar({ currentUser }) {
 
               {/* 1. Titlu */}
               <div>
-                <label style={labelStyle}>Titlu ședință / eveniment *</label>
+                <label style={labelStyle}>Titlu ședință *</label>
                 <input
                   type="text"
-                  placeholder="ex: Ședință Echipa IS, Verificare Proiect"
+                  placeholder="ex: Ședință Echipa IS, Verificare Etapa 2"
                   value={eventForm.title}
                   onChange={e => setEventForm({ ...eventForm, title: e.target.value })}
                   required
@@ -1372,21 +1252,7 @@ function Calendar({ currentUser }) {
                 />
               </div>
 
-              {/* 2. Tip activitate */}
-              <div>
-                <label style={labelStyle}>Tip activitate</label>
-                <select
-                  value={eventForm.category}
-                  onChange={e => setEventForm({ ...eventForm, category: e.target.value })}
-                  style={{ ...inputStyle, cursor: 'pointer', fontWeight: '700' }}
-                >
-                  {Object.entries(CATEGORIES).map(([k, v]) => (
-                    <option key={k} value={k}>{v.icon} {v.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* 3. Dată & Ore */}
+              {/* 2. Dată & Ore */}
               <div>
                 <label style={labelStyle}>Data</label>
                 <input
@@ -1433,7 +1299,7 @@ function Calendar({ currentUser }) {
                 </div>
               )}
 
-              {/* 4. Opțiune Google Meet */}
+              {/* 3. Google Meet Link */}
               <div style={{
                 backgroundColor: eventForm.hasGoogleMeet ? '#f5f3ff' : '#f8fafc',
                 border: eventForm.hasGoogleMeet ? '1.5px solid #c4b5fd' : '1px solid #e2e8f0',
@@ -1462,7 +1328,7 @@ function Calendar({ currentUser }) {
                 )}
               </div>
 
-              {/* 5. Invitați (Email-uri) */}
+              {/* 4. Invitați (Email-uri) */}
               <div>
                 <label style={labelStyle}>
                   📧 Invitați (adrese de email, separate prin virgulă)
@@ -1474,16 +1340,28 @@ function Calendar({ currentUser }) {
                   onChange={e => setEventForm({ ...eventForm, attendees: e.target.value })}
                   style={inputStyle}
                 />
-                <span style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', display: 'block' }}>
-                  💡 La salvare, invitații vor primi email cu link-ul Google Meet pentru a intra în ședință.
-                </span>
               </div>
+
+              {/* 5. Opțiune automată de trimitere pe email prin noreply */}
+              {eventForm.attendees && (
+                <div style={{ backgroundColor: '#ecfdf5', border: '1.5px solid #a7f3d0', borderRadius: '10px', padding: '10px 14px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#065f46', cursor: 'pointer', fontWeight: '700' }}>
+                    <input
+                      type="checkbox"
+                      checked={eventForm.sendEmailAutomatically}
+                      onChange={e => setEventForm({ ...eventForm, sendEmailAutomatically: e.target.checked })}
+                      style={{ width: '16px', height: '16px', accentColor: '#059669' }}
+                    />
+                    ✉️ Trimite automat invitațiile pe email (noreply@proiect-is.ro) la salvare
+                  </label>
+                </div>
+              )}
 
               {/* 6. Descriere / Agendă (opțional) */}
               <div>
-                <label style={labelStyle}>Agendă / Descriere (opțional)</label>
+                <label style={labelStyle}>Descriere / Agendă (opțional)</label>
                 <textarea
-                  placeholder="Ce se discută la ședință..."
+                  placeholder="Subiectele abordate la ședință..."
                   value={eventForm.description}
                   onChange={e => setEventForm({ ...eventForm, description: e.target.value })}
                   rows={2}
@@ -1492,7 +1370,7 @@ function Calendar({ currentUser }) {
               </div>
 
               {/* Butoane acțiune salvare */}
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '6px' }}>
                 <button
                   type="button"
                   onClick={() => setShowEventModal(false)}
@@ -1519,104 +1397,6 @@ function Calendar({ currentUser }) {
               </div>
 
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* ══════════════════ MODAL CONFIRMARE & TRIMITERE EMAIL INVITAȚIE ══════════════════ */}
-      {emailInviteModal && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10002, padding: '20px' }}>
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '20px', padding: '28px', maxWidth: '480px', width: '100%', boxShadow: '0 24px 48px rgba(0,0,0,0.25)' }}>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-              <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>
-                ✉️
-              </div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '18px', color: '#0f172a', fontWeight: '800' }}>
-                  Invitație Ședință Pregătită!
-                </h3>
-                <span style={{ fontSize: '13px', color: '#059669', fontWeight: '700' }}>
-                  {emailInviteModal.googleSent
-                    ? '✅ S-a trimis automat prin Google Calendar!'
-                    : 'Ședința a fost salvată.'}
-                </span>
-              </div>
-            </div>
-
-            <div style={{ backgroundColor: '#f8fafc', border: CARD_BORDER, borderRadius: '12px', padding: '14px', marginBottom: '18px', fontSize: '13px', lineHeight: 1.5 }}>
-              <div><strong>📌 Ședință:</strong> {emailInviteModal.title}</div>
-              <div><strong>📅 Dată & Oră:</strong> {emailInviteModal.date} la ora {emailInviteModal.startTime}</div>
-              <div><strong>👥 Destinatari:</strong> {emailInviteModal.attendees}</div>
-              <div style={{ marginTop: '8px', wordBreak: 'break-all' }}>
-                <strong>🎥 Link Google Meet:</strong><br />
-                <a href={emailInviteModal.meetLink} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: '700' }}>
-                  {emailInviteModal.meetLink}
-                </a>
-              </div>
-            </div>
-
-            <p style={{ fontSize: '13px', color: '#475569', marginBottom: '16px' }}>
-              Apasă pe butonul de mai jos pentru a deschide email-ul direct în Gmail sau în clientul tău de mail cu toate datele gata completate:
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <button
-                onClick={() => {
-                  handleOpenGmailCompose(
-                    emailInviteModal.title,
-                    emailInviteModal.date,
-                    emailInviteModal.startTime,
-                    emailInviteModal.meetLink,
-                    emailInviteModal.attendees,
-                    emailInviteModal.description
-                  );
-                  setEmailInviteModal(null);
-                }}
-                style={{
-                  padding: '12px', background: 'linear-gradient(135deg, #ea4335, #c5221f)',
-                  color: '#ffffff', border: 'none', borderRadius: '10px',
-                  fontWeight: '800', fontSize: '14px', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
-                }}
-              >
-                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" style={{ width: '16px', filter: 'brightness(0) invert(1)' }} />
-                Deschide & Trimite prin Gmail ↗
-              </button>
-
-              <button
-                onClick={() => {
-                  handleOpenMailto(
-                    emailInviteModal.title,
-                    emailInviteModal.date,
-                    emailInviteModal.startTime,
-                    emailInviteModal.meetLink,
-                    emailInviteModal.attendees,
-                    emailInviteModal.description
-                  );
-                  setEmailInviteModal(null);
-                }}
-                style={{
-                  padding: '11px', backgroundColor: '#f1f5f9',
-                  color: '#334155', border: CARD_BORDER, borderRadius: '10px',
-                  fontWeight: '700', fontSize: '13px', cursor: 'pointer'
-                }}
-              >
-                📫 Trimite prin alt Client de Email (Outlook, etc.)
-              </button>
-
-              <button
-                onClick={() => setEmailInviteModal(null)}
-                style={{
-                  padding: '9px', backgroundColor: 'transparent',
-                  color: '#64748b', border: 'none', cursor: 'pointer',
-                  fontSize: '13px', fontWeight: '600'
-                }}
-              >
-                Am trimis deja / Închide
-              </button>
-            </div>
-
           </div>
         </div>
       )}
@@ -1673,7 +1453,7 @@ function Calendar({ currentUser }) {
           onClick={() => setInspectorOpen(false)}
         >
           <div
-            style={{ backgroundColor: '#ffffff', borderRadius: '20px', padding: '28px', maxWidth: '540px', width: '100%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.22)' }}
+            style={{ backgroundColor: '#ffffff', borderRadius: '20px', padding: '28px', maxWidth: '520px', width: '100%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.22)' }}
             onClick={e => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
@@ -1682,7 +1462,7 @@ function Calendar({ currentUser }) {
                   {getDayName(selectedDate)}, {selectedDate}
                 </h3>
                 <span style={{ fontSize: '13px', color: '#64748b' }}>
-                  {selectedDayEvents.length} {selectedDayEvents.length === 1 ? 'eveniment' : 'evenimente'}
+                  {selectedDayEvents.length} {selectedDayEvents.length === 1 ? 'ședință' : 'ședințe'}
                 </span>
               </div>
               <button
@@ -1702,12 +1482,11 @@ function Calendar({ currentUser }) {
 
             {selectedDayEvents.length === 0 ? (
               <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '14px', textAlign: 'center', padding: '24px 0' }}>
-                Nicio activitate programată în această zi.
+                Nicio ședință programată în această zi.
               </p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {selectedDayEvents.map(ev => {
-                  const cat    = CATEGORIES[ev.category] || CATEGORIES.video_call;
                   const isLive = isMeetingLiveNow(ev);
                   const meetUrl = ev.meetLink || 'https://meet.google.com/new';
 
@@ -1718,7 +1497,7 @@ function Calendar({ currentUser }) {
                         padding: '14px', borderRadius: '12px',
                         backgroundColor: isLive ? '#fff1f2' : '#f8fafc',
                         border: CARD_BORDER,
-                        borderLeft: `4px solid ${isLive ? '#dc2626' : cat.color}`
+                        borderLeft: `4px solid ${isLive ? '#dc2626' : '#7c3aed'}`
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -1726,7 +1505,7 @@ function Calendar({ currentUser }) {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                             <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '15px' }}>{ev.title}</span>
                             {isLive && <span style={{ fontSize: '9px', backgroundColor: '#dc2626', color: '#fff', padding: '1px 6px', borderRadius: '4px', fontWeight: '800' }}>LIVE</span>}
-                            <span style={{ fontSize: '10px', backgroundColor: cat.bg, color: cat.color, padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>{cat.icon} {cat.label}</span>
+                            {(ev.meetLink || ev.hasGoogleMeet) && <span style={{ fontSize: '10px', backgroundColor: '#ede9fe', color: '#7c3aed', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>🎥 Meet</span>}
                           </div>
                           <div style={{ fontSize: '12px', color: '#2563eb', fontWeight: '700', marginTop: '4px' }}>
                             ⏰ {ev.allDay ? 'Toată ziua' : `${ev.startTime}${ev.endTime ? ` – ${ev.endTime}` : ''}`}
@@ -1742,17 +1521,17 @@ function Calendar({ currentUser }) {
                       </div>
 
                       {(ev.meetLink || ev.hasGoogleMeet) && (
-                        <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
+                        <div style={{ display: 'flex', gap: '6px', marginTop: '10px', flexWrap: 'wrap' }}>
                           <a href={meetUrl} target="_blank" rel="noreferrer"
                             style={{ fontSize: '11px', backgroundColor: '#2563eb', color: '#fff', padding: '5px 10px', borderRadius: '6px', fontWeight: '700', textDecoration: 'none' }}>
                             🎥 Intră în Meet
                           </a>
                           {ev.attendees && (
                             <button
-                              onClick={() => handleOpenGmailCompose(ev.title, ev.date, ev.startTime, meetUrl, ev.attendees, ev.description)}
+                              onClick={() => handleResendInvites(ev)}
                               style={{ fontSize: '11px', backgroundColor: '#fef3c7', border: '1px solid #fde68a', color: '#92400e', padding: '5px 8px', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}
                             >
-                              📧 Trimite Email
+                              📧 Retrimite Email
                             </button>
                           )}
                           <button onClick={() => copyToClipboard(meetUrl)}
