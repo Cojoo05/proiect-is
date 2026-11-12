@@ -250,17 +250,78 @@ export default function TopBar({ currentUser, setCurrentUser }) {
   };
 
   return (
+    <>
+    {/* Spacer: keeps page content below the fixed bar */}
+    <div style={{ height: '60px' }} />
     <div
       style={{
         position: 'fixed',
-        top: '16px',
-        right: '24px',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: '60px',
+        boxSizing: 'border-box',
+        padding: '0 24px',
+        backgroundColor: '#e5e7eb',
+        borderBottom: '1px solid #cbd5e1',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
         zIndex: 9999,
         display: 'flex',
         alignItems: 'center',
-        gap: '8px',
+        justifyContent: 'space-between',
       }}
     >
+      {/* ── Left Branding Badge ────────────────────────────────────────── */}
+      <div
+        onClick={() => navigate('/dashboard')}
+        title="Mergi la Dashboard"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        <div
+          style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '10px',
+            backgroundColor: '#5a3d5c',
+            color: '#ffffff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: 'bold',
+            fontSize: '18px',
+            boxShadow: '0 2px 5px rgba(90, 61, 92, 0.25)',
+            flexShrink: 0,
+          }}
+        >
+          P
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <span
+            style={{
+              margin: 0,
+              fontSize: '1.2rem',
+              color: '#0f172a',
+              fontWeight: '700',
+              lineHeight: '1.2',
+              letterSpacing: '-0.01em',
+            }}
+          >
+            Workspace
+          </span>
+          <span style={{ fontSize: '12px', color: '#475569', lineHeight: '1.2' }}>
+            Conectat ca <strong style={{ color: '#1e293b' }}>{currentUser?.username || currentUser?.email || 'User'}</strong>
+          </span>
+        </div>
+      </div>
+
+      {/* ── Right Actions (Bell + Profile) ─────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
       {/* ── Bell ───────────────────────────────────────────────────────── */}
       <div ref={dropdownRef} style={{ position: 'relative' }}>
         <button
@@ -641,6 +702,32 @@ export default function TopBar({ currentUser, setCurrentUser }) {
             {/* Menu items */}
             <div style={{ padding: '6px 0' }}>
               <button
+                onClick={() => {
+                  setProfileOpen(false);
+                  navigate('/tasks');
+                }}
+                style={{
+                  width: '100%',
+                  padding: '9px 16px',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#1e293b',
+                  fontWeight: '500',
+                  textAlign: 'left',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                <span style={{ fontSize: '15px' }}>✅</span>
+                Tasks
+              </button>
+              <button
                 onClick={handleLogout}
                 style={{
                   width: '100%',
@@ -667,7 +754,9 @@ export default function TopBar({ currentUser, setCurrentUser }) {
           </div>
         )}
       </div>
+      </div>
     </div>
+    </>
   );
 }
 

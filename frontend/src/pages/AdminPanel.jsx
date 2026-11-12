@@ -33,6 +33,7 @@ export default function AdminPanel({ currentUser }) {
     adminLevel: 0,
     color: '#5a3d5c',
     isDefault: false,
+    canCreateKnowledge: true,
   });
   const [editingRoleId, setEditingRoleId] = useState(null);
   const [showRoleModal, setShowRoleModal] = useState(false);
@@ -193,6 +194,7 @@ export default function AdminPanel({ currentUser }) {
       adminLevel: 0,
       color: '#5a3d5c',
       isDefault: false,
+      canCreateKnowledge: true,
     });
     setEditingRoleId(null);
     setShowRoleModal(true);
@@ -205,6 +207,7 @@ export default function AdminPanel({ currentUser }) {
       adminLevel: role.adminLevel || 0,
       color: role.color || '#5a3d5c',
       isDefault: Boolean(role.isDefault),
+      canCreateKnowledge: role.canCreateKnowledge !== false,
     });
     setEditingRoleId(role.id);
     setShowRoleModal(true);
@@ -279,7 +282,7 @@ export default function AdminPanel({ currentUser }) {
   });
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', padding: '30px 24px', fontFamily: 'sans-serif' }}>
+    <div style={{ minHeight: 'calc(100vh - 60px)', backgroundColor: '#f8fafc', padding: '30px 24px', fontFamily: 'sans-serif' }}>
       <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
         
         {/* ── Top Bar / Header ───────────────────────────────────────────── */}
@@ -704,6 +707,10 @@ export default function AdminPanel({ currentUser }) {
                       <div style={{ fontSize: '13px', color: '#64748b' }}>
                         👥 Utilizatori alocați: <strong style={{ color: '#1e293b' }}>{role.userCount ?? 0}</strong>
                       </div>
+                      <div style={{ fontSize: '12px', color: role.canCreateKnowledge !== false ? '#16a34a' : '#64748b', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '6px' }}>
+                        <span>{role.canCreateKnowledge !== false ? '✅' : '❌'}</span>
+                        <span>{role.canCreateKnowledge !== false ? 'Poate crea notițe în Knowledge' : 'Fără drept de creare în Knowledge'}</span>
+                      </div>
                     </div>
                   </div>
 
@@ -825,6 +832,26 @@ export default function AdminPanel({ currentUser }) {
                       </strong>
                       <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
                         Utilizatorii cu acest rol au acces complet la Admin Panel și gestionarea întregului sistem.
+                      </div>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Can Create Knowledge Checkbox */}
+                <div style={{ marginBottom: '18px', padding: '12px 14px', backgroundColor: roleFormData.canCreateKnowledge ? '#f0fdf4' : '#f8fafc', borderRadius: '8px', border: `1px solid ${roleFormData.canCreateKnowledge ? '#bbf7d0' : '#e2e8f0'}` }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={roleFormData.canCreateKnowledge}
+                      onChange={(e) => setRoleFormData({ ...roleFormData, canCreateKnowledge: e.target.checked })}
+                      style={{ marginTop: '3px', cursor: 'pointer' }}
+                    />
+                    <div>
+                      <strong style={{ fontSize: '13px', color: roleFormData.canCreateKnowledge ? '#166534' : '#1e293b' }}>
+                        🧠 Poate crea notițe în Knowledge
+                      </strong>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                        Permite utilizatorilor cu acest rol să creeze notițe noi în aplicația Knowledge.
                       </div>
                     </div>
                   </label>

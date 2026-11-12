@@ -378,7 +378,7 @@ function MessagesPage({ currentUser }) {
   const availableToAddUsers = allUsers.filter(u => !activeGroupParticipantIds.has(u.id));
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc', fontFamily: 'sans-serif' }}>
+    <div style={{ height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', backgroundColor: '#f8fafc', fontFamily: 'sans-serif' }}>
       {/* Top Header */}
       <header
         style={{

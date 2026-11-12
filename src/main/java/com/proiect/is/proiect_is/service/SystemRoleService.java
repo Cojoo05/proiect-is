@@ -67,6 +67,7 @@ public class SystemRoleService {
             map.put("hasFullAccess", role.isHasFullAccess());
             map.put("color", role.getColor());
             map.put("isDefault", role.isDefault());
+            map.put("canCreateKnowledge", role.isCanCreateKnowledge());
             map.put("createdAt", role.getCreatedAt());
             map.put("userCount", count);
             return map;
@@ -78,6 +79,14 @@ public class SystemRoleService {
         if ("ADMIN".equalsIgnoreCase(roleName.trim())) return true;
         return systemRoleRepository.findByNameIgnoreCase(roleName.trim())
                 .map(SystemRole::isHasFullAccess)
+                .orElse(false);
+    }
+
+    public boolean canCreateKnowledge(String roleName) {
+        if (roleName == null || roleName.trim().isEmpty()) return false;
+        if ("ADMIN".equalsIgnoreCase(roleName.trim())) return true;
+        return systemRoleRepository.findByNameIgnoreCase(roleName.trim())
+                .map(r -> r.isHasFullAccess() || r.isCanCreateKnowledge())
                 .orElse(false);
     }
 
@@ -165,6 +174,7 @@ public class SystemRoleService {
         }
 
         existing.setHasFullAccess(roleData.isHasFullAccess());
+        existing.setCanCreateKnowledge(roleData.isCanCreateKnowledge());
         existing.setAdminLevel(roleData.isHasFullAccess() ? 2 : (roleData.getAdminLevel() != null ? roleData.getAdminLevel() : 0));
 
         if (roleData.getColor() != null && !roleData.getColor().isBlank()) {
