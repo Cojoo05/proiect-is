@@ -133,8 +133,8 @@ function ProjectDetail({ currentUser }) {
     canInviteMembers: true,
     allowedChannels: 'ALL'
   } : {
-    canCreateTasks: assignedRole ? assignedRole.canCreateTasks : true,
-    canManageTasks: assignedRole ? assignedRole.canManageTasks : true,
+    canCreateTasks: assignedRole ? Boolean(assignedRole.canCreateTasks) : false,
+    canManageTasks: assignedRole ? Boolean(assignedRole.canManageTasks) : false,
     canCreateChannels: assignedRole ? assignedRole.canCreateChannels : false,
     canSendMessages: assignedRole ? assignedRole.canSendMessages : true,
     canCreatePolls: assignedRole ? assignedRole.canCreatePolls : true,
@@ -143,6 +143,19 @@ function ProjectDetail({ currentUser }) {
     canInviteMembers: assignedRole ? assignedRole.canInviteMembers : false,
     allowedChannels: assignedRole ? assignedRole.allowedChannels : 'ALL'
   };
+
+  const canGiveTasks = isOwner || Boolean(permissions.canCreateTasks);
+
+  const visibleTabs = TABS.filter(tab => {
+    if (tab.key === 'tasks') return canGiveTasks;
+    return true;
+  });
+
+  useEffect(() => {
+    if (activeTab === 'tasks' && !canGiveTasks && !loading) {
+      setActiveTab('feed');
+    }
+  }, [activeTab, canGiveTasks, loading]);
 
   const handleInvite = async () => {
     if (!selectedInviteUser) return;
@@ -306,7 +319,7 @@ function ProjectDetail({ currentUser }) {
 
       {/* Tab Nav */}
       <div style={{ display: 'flex', gap: '4px', borderBottom: '2px solid #e2e8f0', marginBottom: '24px' }}>
-        {TABS.map(tab => (
+        {visibleTabs.map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
@@ -339,11 +352,12 @@ function ProjectDetail({ currentUser }) {
           permissions={permissions}
         />
       )}
-      {activeTab === 'tasks' && (
+      {activeTab === 'tasks' && canGiveTasks && (
         <TasksTab
           projectId={projectId}
           currentUser={currentUser}
           members={members}
+          isOwner={isOwner}
           permissions={permissions}
         />
       )}

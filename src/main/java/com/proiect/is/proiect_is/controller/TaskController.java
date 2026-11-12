@@ -213,6 +213,24 @@ public class TaskController {
         return ResponseEntity.ok(saved);
     }
 
+    @DeleteMapping("/{taskId}")
+    public ResponseEntity<?> deleteTask(@PathVariable Long taskId, @RequestParam Long userId) {
+        Task task = taskRepository.findById(taskId).orElse(null);
+        if (task == null) {
+            return ResponseEntity.notFound().build();
+        }
+        boolean isCreator = task.getCreator() != null && userId.equals(task.getCreator().getId());
+        boolean isAssignee = task.getAssignee() != null && userId.equals(task.getAssignee().getId());
+        boolean isProjectOwner = task.getProject() != null && task.getProject().getOwner() != null
+                && userId.equals(task.getProject().getOwner().getId());
+        if (!isCreator && !isAssignee && !isProjectOwner) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Nu ai permisiunea de a șterge acest task!"));
+        }
+        taskRepository.delete(task);
+        return ResponseEntity.ok(Map.of("message", "Task-ul a fost șters cu succes!"));
+    }
+
     // --- BUCKETS (coloanele personale din Kanban: "Săptămâna asta" etc.) ---
     @GetMapping("/buckets/{userId}")
     public List<TaskBucket> getBuckets(@PathVariable Long userId) {

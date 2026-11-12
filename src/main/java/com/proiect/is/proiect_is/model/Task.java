@@ -34,8 +34,9 @@ public class Task {
     @Column(nullable = false)
     String status;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "project_id")
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "owner"})
     private Project project;
 
     @Transient

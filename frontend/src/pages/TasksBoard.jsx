@@ -158,10 +158,7 @@ function TaskModal({ mode, initial, buckets, users, currentUser, onClose, onSubm
   const [deadline, setDeadline] = useState(initial.deadline || '');
   const [color, setColor] = useState(initial.color || null);
   const [bucketId, setBucketId] = useState(initial.bucketId || buckets[0]?.id || '');
-  const [assigneeId, setAssigneeId] = useState(currentUser.id);
   const [saving, setSaving] = useState(false);
-
-  const isSelf = Number(assigneeId) === Number(currentUser.id);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -173,8 +170,8 @@ function TaskModal({ mode, initial, buckets, users, currentUser, onClose, onSubm
         description: description.trim(),
         deadline,
         color,
-        bucketId: isSelf ? Number(bucketId) || null : null,
-        assigneeId: Number(assigneeId),
+        bucketId: Number(bucketId) || null,
+        assigneeId: Number(currentUser.id),
       });
     } finally {
       setSaving(false);
@@ -242,7 +239,7 @@ function TaskModal({ mode, initial, buckets, users, currentUser, onClose, onSubm
             </div>
           </div>
 
-          {isSelf && buckets.length > 0 && (
+          {buckets.length > 0 && (
             <div style={{ flex: '1 1 180px', minWidth: 0 }}>
               <label style={modalLabel}>📋 Coloană</label>
               <select
@@ -257,27 +254,6 @@ function TaskModal({ mode, initial, buckets, users, currentUser, onClose, onSubm
             </div>
           )}
         </div>
-
-        {mode === 'create' && (
-          <div style={{ marginBottom: '14px' }}>
-            <label style={modalLabel}>👤 Alocat către</label>
-            <select
-              value={assigneeId}
-              onChange={(e) => setAssigneeId(e.target.value)}
-              style={{ ...modalInput, backgroundColor: '#ffffff' }}
-            >
-              <option value={currentUser.id}>Eu ({currentUser.username})</option>
-              {users.filter((u) => u.id !== currentUser.id).map((u) => (
-                <option key={u.id} value={u.id}>{u.username}</option>
-              ))}
-            </select>
-            {!isSelf && (
-              <span style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginTop: '4px' }}>
-                Task-ul va apărea în board-ul persoanei alese, iar tu îl vei vedea la „Date de mine”.
-              </span>
-            )}
-          </div>
-        )}
 
         <div style={{ marginBottom: '20px' }}>
           <label style={modalLabel}>🎨 Culoare cartonaș</label>
@@ -346,9 +322,8 @@ function TasksBoard({ currentUser }) {
   const navigate = useNavigate();
   const me = currentUser?.id;
 
-  const [view, setView] = useState('board'); // 'board' | 'given' | 'done' | 'cancel'
+  const [view, setView] = useState('board'); // 'board' | 'done' | 'cancel'
   const [tasks, setTasks] = useState([]);
-  const [givenTasks, setGivenTasks] = useState([]);
   const [buckets, setBuckets] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -362,14 +337,12 @@ function TasksBoard({ currentUser }) {
   const loadAll = useCallback(async () => {
     if (!me) return;
     try {
-      const [b, mine, given] = await Promise.all([
+      const [b, mine] = await Promise.all([
         fetch(`${API}/buckets/${me}`).then((r) => (r.ok ? r.json() : [])),
         fetch(`${API}/my-tasks/${me}`).then((r) => (r.ok ? r.json() : [])),
-        fetch(`${API}/given-tasks/${me}`).then((r) => (r.ok ? r.json() : [])),
       ]);
       setBuckets(Array.isArray(b) ? b : []);
       setTasks(Array.isArray(mine) ? mine : []);
-      setGivenTasks(Array.isArray(given) ? given.filter((t) => t.assignee?.id !== me) : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -664,22 +637,9 @@ function TasksBoard({ currentUser }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
         <h1 style={{ margin: 0, fontSize: '1.5rem', color: '#1e293b', fontWeight: '800', lineHeight: 1.2 }}>✅ Tasks</h1>
 
-        {(view === 'board' || view === 'given') && (
-          <div style={{ display: 'flex', gap: '4px', padding: '4px', backgroundColor: '#e2e8f0', borderRadius: '10px' }}>
-            <button style={segBtn(view === 'board')} onClick={() => setView('board')}>📋 Task-urile mele</button>
-            <button style={segBtn(view === 'given')} onClick={() => setView('given')}>📤 Date de mine ({givenTasks.length})</button>
-          </div>
-        )}
-
         {view === 'board' && (
           <div style={{ display: 'flex', gap: '8px' }}>
             <button style={ghostBtn} onClick={() => setBucketModal({ mode: 'create' })}>+ Coloană</button>
-            <button style={primaryBtn} onClick={() => setTaskModal({ mode: 'create' })}>+ Task nou</button>
-          </div>
-        )}
-        {view === 'given' && (
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button style={primaryBtn} onClick={() => setTaskModal({ mode: 'create' })}>+ Task nou</button>
           </div>
         )}
       </div>
@@ -728,13 +688,6 @@ function TasksBoard({ currentUser }) {
                     )}
                     {bucketTasks.map((t) => renderCard(t, false))}
                   </div>
-
-                  <button
-                    onClick={() => setTaskModal({ mode: 'create', bucketId: bucket.id })}
-                    style={{ flexShrink: 0, padding: '8px', backgroundColor: 'transparent', color: '#64748b', border: '1px dashed #cbd5e1', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
-                  >
-                    + Adaugă task
-                  </button>
                 </div>
               );
             })}
@@ -767,90 +720,6 @@ function TasksBoard({ currentUser }) {
               );
             })}
           </div>
-        </div>
-      ) : view === 'given' ? (
-        <div>
-          {givenTasks.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8', lineHeight: 1.6 }}>
-              Nu ai dat încă task-uri altor persoane.<br />
-              Folosește „+ Task nou” și alege „Alocat către”.
-            </div>
-          ) : (
-            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: '700', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    <th style={{ padding: '14px 18px' }}>Task</th>
-                    <th style={{ padding: '14px 18px' }}>Alocat către</th>
-                    <th style={{ padding: '14px 18px' }}>Termen limită</th>
-                    <th style={{ padding: '14px 18px' }}>Stare</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...givenTasks].sort(sortByDeadline).map((t, idx) => {
-                    const archived = isArchived(t);
-                    const statusBadge = t.status === 'TERMINAT' ? (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', backgroundColor: '#dcfce7', color: '#166534' }}>
-                        ✅ Done
-                      </span>
-                    ) : t.status === 'ANULAT' ? (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', backgroundColor: '#fee2e2', color: '#991b1b' }}>
-                        ❌ Cancel
-                      </span>
-                    ) : (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', backgroundColor: '#f3e8ff', color: '#6b21a8' }}>
-                        🟣 Activ
-                      </span>
-                    );
-
-                    return (
-                      <tr
-                        key={t.id}
-                        style={{
-                          borderBottom: idx === givenTasks.length - 1 ? 'none' : '1px solid #f1f5f9',
-                          transition: 'background-color 0.15s ease',
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f8fafc'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                      >
-                        <td style={{ padding: '14px 18px', verticalAlign: 'top' }}>
-                          <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px', wordBreak: 'break-word' }}>
-                            {t.title}
-                          </div>
-                          {t.description && (
-                            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5 }}>
-                              {t.description}
-                            </div>
-                          )}
-                          {t.projectId && (
-                            <div style={{ marginTop: '6px' }}>
-                              <span style={{ fontSize: '11px', fontWeight: '600', padding: '2px 8px', borderRadius: '8px', backgroundColor: '#f3e8ff', color: '#6b21a8' }}>
-                                📁 {t.project?.name || 'Proiect'}
-                              </span>
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ padding: '14px 18px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontWeight: '600', color: '#334155' }}>
-                            <span style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#5a3d5c', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700' }}>
-                              {t.assignee?.username?.charAt(0)?.toUpperCase() || '?'}
-                            </span>
-                            <span>{t.assignee?.username || 'Neasignat'}</span>
-                          </div>
-                        </td>
-                        <td style={{ padding: '14px 18px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                          {renderDeadline(t, archived) || <span style={{ color: '#94a3b8', fontSize: '12px' }}>—</span>}
-                        </td>
-                        <td style={{ padding: '14px 18px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                          {statusBadge}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       ) : (
         <div>
