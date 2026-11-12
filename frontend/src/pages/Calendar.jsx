@@ -8,6 +8,7 @@ const SECONDARY_SLATE  = '#334155'; // Slate 700
 const BRAND_PURPLE     = '#5a3d5c';
 const BRAND_PURPLE_HOV = '#4a2f4c';
 const CARD_BG          = '#ffffff';
+const CARD_SHADOW      = '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05)';
 const BORDER_LIGHT     = '1px solid #e2e8f0';
 const BORDER_SUBTLE    = '1px solid #cbd5e1';
 const RADIUS_MD        = '10px';
@@ -260,7 +261,7 @@ function Calendar({ currentUser }) {
     showToast('Deconectat de la Google Calendar.');
   };
 
-  /* ════════════════ Trimitere Automată Invitații pe Email (proiect.is@gmail.com) ════════════════ */
+  /* ════════════════ Trimitere Automată Invitații pe Email (proiect.is19@gmail.com) ════════════════ */
   const sendEmailInvitesAutomatically = async (title, dateStr, startTime, endTime, meetLink, attendeesStr, description) => {
     if (!attendeesStr || !attendeesStr.trim()) return;
 
@@ -271,7 +272,7 @@ function Calendar({ currentUser }) {
 
     if (emailList.length === 0) return;
 
-    // 1. Apel către backend Email Service (proiect.is@gmail.com)
+    // 1. Apel către backend Email Service (proiect.is19@gmail.com)
     try {
       const res = await fetch(`${CAL_API}/send-invite-email`, {
         method:  'POST',
@@ -292,7 +293,7 @@ function Calendar({ currentUser }) {
           showToast(`Invitațiile pe email au fost expediate cu succes către ${emailList.length} participanți.`, 'success');
         } else {
           // Notificare informativă dacă SMTP are nevoie de App Password
-          showToast(`Invitațiile au fost înregistrate. Pentru expedierea automată din Gmail, Google impune setarea unei Parole de Aplicație (16 caractere) în contul proiect.is@gmail.com.`, 'info');
+          showToast(`Invitațiile au fost înregistrate. Pentru expedierea automată din Gmail, Google impune setarea unei Parole de Aplicație (16 caractere) în contul proiect.is19@gmail.com.`, 'info');
         }
       }
     } catch (_) {}
@@ -767,7 +768,7 @@ function Calendar({ currentUser }) {
                 Program Ședințe Echipă
               </h3>
               <span style={{ fontSize: '13px', color: '#64748b' }}>
-                Invitațiile sunt expediate automat prin contul oficial <strong>proiect.is@gmail.com</strong>
+                Invitațiile sunt expediate automat prin contul oficial <strong>proiect.is19@gmail.com</strong>
               </span>
             </div>
             <button
@@ -869,7 +870,7 @@ function Calendar({ currentUser }) {
                       {ev.attendees && (
                         <button
                           onClick={() => handleResendInvites(ev)}
-                          title="Retrimite invitația pe email tuturor participanților prin contul proiect.is@gmail.com"
+                          title="Retrimite invitația pe email tuturor participanților prin contul proiect.is19@gmail.com"
                           style={{
                             fontSize: '12px', backgroundColor: '#ffffff', color: '#334155',
                             border: BORDER_LIGHT, padding: '7px 12px', borderRadius: '6px',
@@ -1140,7 +1141,7 @@ function Calendar({ currentUser }) {
                   {editingId ? 'Editare Detalii Ședință' : 'Programare Ședință de Lucru'}
                 </h3>
                 <span style={{ fontSize: '12px', color: '#64748b' }}>
-                  Expediere automată a invitației prin <strong>proiect.is@gmail.com</strong>
+                  Expediere automată a invitației prin <strong>proiect.is19@gmail.com</strong>
                 </span>
               </div>
               <button onClick={() => setShowEventModal(false)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#94a3b8' }}>✕</button>
@@ -1262,7 +1263,7 @@ function Calendar({ currentUser }) {
                       onChange={e => setEventForm({ ...eventForm, sendEmailAutomatically: e.target.checked })}
                       style={{ width: '16px', height: '16px', accentColor: '#166534' }}
                     />
-                    Trimite automat invitațiile prin email de la proiect.is@gmail.com
+                    Trimite automat invitațiile prin email de la proiect.is19@gmail.com
                   </label>
                 </div>
               )}

@@ -14,11 +14,11 @@ public class EmailService {
     @Autowired(required = false)
     private JavaMailSender mailSender;
 
-    @Value("${spring.mail.username:proiect.is@gmail.com}")
+    @Value("${spring.mail.username:proiect.is19@gmail.com}")
     private String senderEmail;
 
     /**
-     * Trimite email automat de invitație la o ședință Google Meet de pe contul proiect.is@gmail.com.
+     * Trimite email automat de invitație la o ședință Google Meet de pe contul proiect.is19@gmail.com.
      */
     public boolean sendMeetingInvitation(
             List<String> toEmails,
