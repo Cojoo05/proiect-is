@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL, WS_BASE_URL } from '../config';
+import { Client } from '@stomp/stompjs';
+import SockJS from 'sockjs-client/dist/sockjs.min.js';
 import FeedTab from './ProjectTabs/FeedTab';
 import TasksTab from './ProjectTabs/TasksTab';
 import FilesTab from './ProjectTabs/FilesTab';
@@ -30,6 +32,7 @@ function ProjectDetail({ currentUser }) {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
   const [selectedInviteUser, setSelectedInviteUser] = useState('');
+  const stompClientRef = useRef(null);
 
   const API = `${API_BASE_URL}/api/projects`;
 
@@ -44,6 +47,13 @@ function ProjectDetail({ currentUser }) {
     fetch(`${API}/${projectId}/feed/channels`)
       .then(r => r.json())
       .then(chans => setChannels(Array.isArray(chans) ? chans : []))
+      .catch(console.error);
+  }, [projectId, API]);
+
+  const fetchProject = useCallback(() => {
+    fetch(`${API}/${projectId}`)
+      .then(r => r.json())
+      .then(proj => setProject(proj))
       .catch(console.error);
   }, [projectId, API]);
 
@@ -66,6 +76,46 @@ function ProjectDetail({ currentUser }) {
       })
       .catch(() => setLoading(false));
   }, [projectId, API]);
+
+  // Real-time WebSocket updates for members, roles, and channels
+  useEffect(() => {
+    if (!projectId) return;
+    let client = null;
+    try {
+      client = new Client({
+        webSocketFactory: () => new SockJS(WS_BASE_URL),
+        reconnectDelay: 5000,
+        onConnect: () => {
+          client.subscribe(`/topic/projects/${projectId}/members`, () => {
+            fetchMembers();
+            fetchProject();
+          });
+          client.subscribe(`/topic/projects/${projectId}/roles`, () => {
+            fetchMembers();
+          });
+          client.subscribe(`/topic/projects/${projectId}/channels`, () => {
+            fetchChannels();
+          });
+        }
+      });
+      client.activate();
+      stompClientRef.current = client;
+    } catch (_) {}
+
+    return () => {
+      try { stompClientRef.current?.deactivate(); } catch (_) {}
+    };
+  }, [projectId, fetchMembers, fetchChannels, fetchProject]);
+
+  // Polling fallback to keep project state synced live
+  useEffect(() => {
+    if (!projectId) return;
+    const timer = setInterval(() => {
+      fetchMembers();
+      fetchChannels();
+    }, 10_000);
+    return () => clearInterval(timer);
+  }, [projectId, fetchMembers, fetchChannels]);
 
   const isOwner = project?.owner?.id === currentUser?.id;
   const currentMember = members.find(m => m.user?.id === currentUser?.id);

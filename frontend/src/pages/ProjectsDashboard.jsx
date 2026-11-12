@@ -5,28 +5,22 @@ import { API_BASE_URL } from '../config';
 function ProjectsDashboard({ currentUser }) {
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
-  const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [projectName, setProjectName] = useState('');
   const [projectDescription, setProjectDescription] = useState('');
-  const [selectedUserIds, setSelectedUserIds] = useState([]);
 
   const API_URL = `${API_BASE_URL}/api/projects`;
-  const USERS_API_URL = `${API_BASE_URL}/api/users`;
 
   const loadData = () => {
     if (!currentUser?.id) return;
     setLoading(true);
 
-    Promise.all([
-      fetch(`${API_URL}/user/${currentUser.id}`).then((r) => r.json()),
-            fetch(USERS_API_URL).then((r) => r.json()).catch(() => [])
-    ])
-      .then(([projectsData, usersData]) => {
+    fetch(`${API_URL}/user/${currentUser.id}`)
+      .then((r) => r.json())
+      .then((projectsData) => {
         setProjects(Array.isArray(projectsData) ? projectsData : []);
-                setAllUsers(Array.isArray(usersData) ? usersData.filter((u) => u.id !== currentUser.id) : []);
         setLoading(false);
       })
       .catch((err) => {
@@ -37,6 +31,15 @@ function ProjectsDashboard({ currentUser }) {
 
   useEffect(() => {
     loadData();
+
+    // Auto-refresh projects if an invitation was accepted in TopBar
+    const handleProjectInviteAccepted = () => {
+      loadData();
+    };
+    window.addEventListener('project-invitation-accepted', handleProjectInviteAccepted);
+    return () => {
+      window.removeEventListener('project-invitation-accepted', handleProjectInviteAccepted);
+    };
   }, [currentUser]);
 
   const handleCreateProject = (e) => {
@@ -46,8 +49,7 @@ function ProjectsDashboard({ currentUser }) {
     const payload = {
       name: projectName.trim(),
       description: projectDescription.trim(),
-      ownerId: currentUser.id,
-      invitedUserIds: selectedUserIds
+      ownerId: currentUser.id
     };
 
     fetch(API_URL, {
@@ -64,7 +66,6 @@ function ProjectsDashboard({ currentUser }) {
         setIsModalOpen(false);
         setProjectName('');
         setProjectDescription('');
-        setSelectedUserIds([]);
       })
       .catch((err) => alert(err.message));
   };
@@ -166,7 +167,7 @@ function ProjectsDashboard({ currentUser }) {
 
       {isModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '12px', width: '100%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '12px', width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto' }}>
             <h2 style={{ marginTop: 0, marginBottom: '20px', color: '#1e293b' }}>Proiect Nou</h2>
             <form onSubmit={handleCreateProject}>
               <div style={{ marginBottom: '16px' }}>
@@ -183,7 +184,7 @@ function ProjectsDashboard({ currentUser }) {
                 />
               </div>
 
-              <div style={{ marginBottom: '16px' }}>
+              <div style={{ marginBottom: '24px' }}>
                 <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px', fontSize: '14px', color: '#334155' }}>
                   Descriere
                 </label>
@@ -194,31 +195,6 @@ function ProjectsDashboard({ currentUser }) {
                   rows="3"
                   style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box', resize: 'vertical' }}
                 />
-              </div>
-
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', fontSize: '14px', color: '#334155' }}>
-                  Invită Utilizatori (opțional, invitația expiră în 48h)
-                </label>
-                <div style={{ maxHeight: '160px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px' }}>
-                  {allUsers.length === 0 ? (
-                    <div style={{ fontSize: '13px', color: '#94a3b8' }}>Nu există alți utilizatori disponibili.</div>
-                  ) : (
-                    allUsers.map((u) => (
-                      <label
-                        key={u.id}
-                        style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0', cursor: 'pointer', fontSize: '14px', color: '#334155' }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedUserIds.includes(u.id)}
-                          onChange={() => toggleUserSelection(u.id)}
-                        />
-                        <span>{u.username || u.email}</span>
-                      </label>
-                    ))
-                  )}
-                </div>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>

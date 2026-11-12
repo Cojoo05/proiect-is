@@ -38,6 +38,9 @@ public class Task {
     @JoinColumn(name = "project_id")
     private Project project;
 
+    @Transient
+    private Long projectId;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public String getTitle() { return title; }
@@ -56,4 +59,6 @@ public class Task {
     public void setStatus(String status) { this.status = status; }
     public Project getProject() { return project; }
     public void setProject(Project project) { this.project = project; }
+    public Long getProjectId() { return project != null ? project.getId() : projectId; }
+    public void setProjectId(Long projectId) { this.projectId = projectId; }
 }
