@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
-import { API_BASE_URL } from '../../config';
+import { useState, useEffect, useRef } from 'react';
+import { API_BASE_URL, WS_BASE_URL } from '../../config';
+import { Client } from '@stomp/stompjs';
+import SockJS from 'sockjs-client/dist/sockjs.min.js';
 
 const COLUMNS = ['PRIMIT', 'IN_LUCRU', 'TERMINAT', 'ANULAT'];
 const COL_COLORS = { PRIMIT: '#3b82f6', IN_LUCRU: '#f59e0b', TERMINAT: '#10b981', ANULAT: '#ef4444' };
@@ -8,6 +10,7 @@ function TasksTab({ projectId, currentUser, members, permissions = {} }) {
   const [tasks, setTasks] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', description: '', assigneeId: '' });
+  const stompClientRef = useRef(null);
 
   const canCreate = permissions.canCreateTasks !== false;
   const canManage = permissions.canManageTasks !== false;
@@ -21,7 +24,50 @@ function TasksTab({ projectId, currentUser, members, permissions = {} }) {
       .catch(console.error);
   };
 
-  useEffect(() => { fetchTasks(); }, [projectId]);
+  useEffect(() => {
+    fetchTasks();
+  }, [projectId]);
+
+  // Polling fallback
+  useEffect(() => {
+    const timer = setInterval(fetchTasks, 10_000);
+    return () => clearInterval(timer);
+  }, [projectId]);
+
+  // WebSocket for real-time task sync across all members
+  useEffect(() => {
+    let client = null;
+    try {
+      client = new Client({
+        webSocketFactory: () => new SockJS(WS_BASE_URL),
+        reconnectDelay: 5000,
+        onConnect: () => {
+          client.subscribe(`/topic/projects/${projectId}/tasks`, (msg) => {
+            try {
+              const updatedTask = JSON.parse(msg.body);
+              setTasks(prev => {
+                const idx = prev.findIndex(t => t.id === updatedTask.id);
+                if (idx >= 0) {
+                  const next = [...prev];
+                  next[idx] = updatedTask;
+                  return next;
+                }
+                return [updatedTask, ...prev];
+              });
+            } catch (err) {
+              console.error(err);
+            }
+          });
+        }
+      });
+      client.activate();
+      stompClientRef.current = client;
+    } catch (_) {}
+
+    return () => {
+      try { stompClientRef.current?.deactivate(); } catch (_) {}
+    };
+  }, [projectId]);
 
   const handleDragStart = (e, taskId) => e.dataTransfer.setData('taskId', taskId);
   const handleDragOver = (e) => e.preventDefault();
@@ -50,7 +96,11 @@ function TasksTab({ projectId, currentUser, members, permissions = {} }) {
         projectId
       })
     }).then(r => {
-      if (r.ok) { setShowModal(false); setNewTask({ title: '', description: '', assigneeId: '' }); fetchTasks(); }
+      if (r.ok) {
+        setShowModal(false);
+        setNewTask({ title: '', description: '', assigneeId: '' });
+        fetchTasks();
+      }
     }).catch(console.error);
   };
 

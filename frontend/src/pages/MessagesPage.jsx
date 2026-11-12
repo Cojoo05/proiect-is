@@ -11,6 +11,7 @@ function MessagesPage({ currentUser }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const targetUserId = searchParams.get('userId');
+  const targetConvId = searchParams.get('convId') || searchParams.get('conversationId');
 
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
@@ -34,6 +35,12 @@ function MessagesPage({ currentUser }) {
   const stompClientRef = useRef(null);
   const messagesEndRef = useRef(null);
   const messageSubscriptionRef = useRef(null);
+  const activeConversationRef = useRef(activeConversation);
+  const handledParamsRef = useRef(null);
+
+  useEffect(() => {
+    activeConversationRef.current = activeConversation;
+  }, [activeConversation]);
 
   const API_CHAT = `${API_BASE_URL}/api/chat`;
   const API_USERS = `${API_BASE_URL}/api/users`;
@@ -46,14 +53,24 @@ function MessagesPage({ currentUser }) {
       .then(data => {
         const list = Array.isArray(data) ? data : [];
         setConversations(list);
+
+        const currentActive = activeConversationRef.current;
         if (selectId) {
           const target = list.find(c => c.id === selectId);
-          if (target) setActiveConversation(target);
-        } else if (activeConversation) {
-          const updatedActive = list.find(c => c.id === activeConversation.id);
-          if (updatedActive) setActiveConversation(updatedActive);
+          if (target) {
+            setActiveConversation(target);
+            activeConversationRef.current = target;
+          }
+        } else if (currentActive) {
+          // Keep the user on their CURRENT chat! Never switch to another chat when a message arrives
+          const updatedActive = list.find(c => c.id === currentActive.id);
+          if (updatedActive) {
+            setActiveConversation(updatedActive);
+            activeConversationRef.current = updatedActive;
+          }
         } else if (list.length > 0) {
           setActiveConversation(list[0]);
+          activeConversationRef.current = list[0];
         }
       })
       .catch(console.error);
@@ -76,12 +93,29 @@ function MessagesPage({ currentUser }) {
     fetchUsers();
   }, [currentUser]);
 
-  // Deschidere automata din parametru ?userId=...
+  // Deschidere automata din parametru ?convId=... sau ?userId=...
   useEffect(() => {
-    if (!currentUser?.id || !targetUserId) return;
+    if (!currentUser?.id) return;
+
+    const paramKey = `${targetConvId || ''}_${targetUserId || ''}`;
+    if (!targetConvId && !targetUserId) return;
+    if (handledParamsRef.current === paramKey) return;
+
+    if (targetConvId && conversations.length > 0) {
+      const conv = conversations.find(c => String(c.id) === String(targetConvId));
+      if (conv) {
+        handledParamsRef.current = paramKey;
+        setActiveConversation(conv);
+        activeConversationRef.current = conv;
+        return;
+      }
+    }
+
+    if (!targetUserId) return;
     const otherId = parseInt(targetUserId, 10);
     if (!otherId || otherId === currentUser.id) return;
 
+    handledParamsRef.current = paramKey;
     fetch(`${API_CHAT}/direct`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -94,11 +128,12 @@ function MessagesPage({ currentUser }) {
       .then(conv => {
         if (conv?.id) {
           setActiveConversation(conv);
+          activeConversationRef.current = conv;
           fetchConversations(conv.id);
         }
       })
       .catch(console.error);
-  }, [currentUser?.id, targetUserId]);
+  }, [currentUser?.id, targetUserId, targetConvId, conversations]);
 
   // 3. Setup global WebSocket for user notifications
   useEffect(() => {
@@ -136,7 +171,17 @@ function MessagesPage({ currentUser }) {
     // Load message history
     fetch(`${API_CHAT}/conversations/${activeConversation.id}/messages?currentUserId=${currentUser.id}`)
       .then(r => r.json())
-      .then(data => setMessages(Array.isArray(data) ? data : []))
+      .then(data => {
+        const msgs = Array.isArray(data) ? data : [];
+        setMessages(msgs);
+        const lastMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null;
+        window.dispatchEvent(new CustomEvent('messages-read', {
+          detail: {
+            conversationId: activeConversation.id,
+            lastMessageId: lastMsg?.id
+          }
+        }));
+      })
       .catch(console.error);
 
     // Unsubscribe from previous
@@ -453,7 +498,10 @@ function MessagesPage({ currentUser }) {
                 return (
                   <div
                     key={conv.id}
-                    onClick={() => setActiveConversation(conv)}
+                    onClick={() => {
+                      setActiveConversation(conv);
+                      activeConversationRef.current = conv;
+                    }}
                     style={{
                       padding: '12px 16px',
                       display: 'flex',

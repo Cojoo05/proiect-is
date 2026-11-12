@@ -53,6 +53,9 @@ public class ChatController {
             item.put("participants", c.getParticipants());
 
             ChatMessage lastMsg = messageRepo.findFirstByConversationIdOrderBySentAtDesc(c.getId());
+            long unreadCount = messageRepo.countUnreadMessages(c.getId(), userId);
+            item.put("unreadCount", unreadCount);
+
             if (lastMsg != null) {
                 Map<String, Object> lastMsgMap = new HashMap<>();
                 lastMsgMap.put("id", lastMsg.getId());
@@ -60,6 +63,7 @@ public class ChatController {
                 lastMsgMap.put("sentAt", lastMsg.getSentAt());
                 lastMsgMap.put("senderId", lastMsg.getSender() != null ? lastMsg.getSender().getId() : null);
                 lastMsgMap.put("senderName", lastMsg.getSender() != null ? lastMsg.getSender().getUsername() : null);
+                lastMsgMap.put("isRead", lastMsg.isRead());
                 item.put("lastMessage", lastMsgMap);
             } else {
                 item.put("lastMessage", null);
@@ -69,6 +73,26 @@ public class ChatController {
         }
 
         return ResponseEntity.ok(result);
+    }
+
+    // --- MARK CONVERSATION AS READ ---
+    @PostMapping("/conversations/{conversationId}/read")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> markConversationAsRead(@PathVariable Long conversationId,
+                                                                      @RequestParam Long userId) {
+        List<ChatMessage> messages = messageRepo.findByConversationIdOrderBySentAtAsc(conversationId);
+        int markedCount = 0;
+        for (ChatMessage m : messages) {
+            if (!m.isRead() && (m.getSender() == null || !m.getSender().getId().equals(userId))) {
+                m.setRead(true);
+                messageRepo.save(m);
+                markedCount++;
+            }
+        }
+        Map<String, Object> res = new HashMap<>();
+        res.put("success", true);
+        res.put("markedRead", markedCount);
+        return ResponseEntity.ok(res);
     }
 
     // --- GET CONVERSATION MESSAGES ---

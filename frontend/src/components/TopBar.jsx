@@ -12,12 +12,58 @@ export default function TopBar({ currentUser, setCurrentUser }) {
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [invitations, setInvitations] = useState([]);
-  const [unreadMessages, setUnreadMessages] = useState([]);
+  const [recentConversations, setRecentConversations] = useState([]);
+
+  // Map of convId -> lastMsgId that the user has marked as read
+  const [readMsgIds, setReadMsgIds] = useState(() => {
+    try {
+      const stored = localStorage.getItem(`read_conv_msgs_${currentUser?.id}`);
+      return stored ? JSON.parse(stored) : {};
+    } catch (_) {
+      return {};
+    }
+  });
+
   const dropdownRef = useRef(null);
   const profileRef = useRef(null);
   const stompClientRef = useRef(null);
 
-  const totalCount = invitations.length + unreadMessages.length;
+  const markConvAsRead = useCallback((convId, lastMsgId) => {
+    if (!currentUser?.id || !convId) return;
+    setReadMsgIds(prev => {
+      const next = { ...prev, [convId]: lastMsgId || true };
+      try {
+        localStorage.setItem(`read_conv_msgs_${currentUser.id}`, JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
+  }, [currentUser?.id]);
+
+  // ── Helper to check if a conversation is unread ───────────────────────────
+  const isConvUnread = useCallback((conv) => {
+    const last = conv?.lastMessage || conv?.lastMsg;
+    if (!last) return false;
+
+    const senderId = last.senderId ?? last.sender?.id;
+    if (senderId && Number(senderId) === Number(currentUser?.id)) {
+      return false;
+    }
+
+    if (readMsgIds[conv.id] && (readMsgIds[conv.id] === last.id || readMsgIds[conv.id] === true)) {
+      return false;
+    }
+
+    if (conv.unreadCount !== undefined && conv.unreadCount !== null) {
+      return Number(conv.unreadCount) > 0;
+    }
+    if (last.isRead !== undefined) {
+      return !last.isRead;
+    }
+    return true;
+  }, [currentUser?.id, readMsgIds]);
+
+  const unreadMsgCount = recentConversations.filter(isConvUnread).length;
+  const totalCount = invitations.length + unreadMsgCount;
 
   // ── Fetch pending invitations ──────────────────────────────────────────────
   const fetchInvitations = useCallback(async () => {
@@ -31,35 +77,47 @@ export default function TopBar({ currentUser, setCurrentUser }) {
     } catch (_) {}
   }, [currentUser?.id]);
 
-  // ── Fetch conversations with unread messages ───────────────────────────────
-  const fetchUnreadMessages = useCallback(async () => {
+  // ── Fetch recent conversations with messages ───────────────────────────────
+  const fetchRecentMessages = useCallback(async () => {
     if (!currentUser?.id) return;
     try {
       const res = await fetch(`${API_BASE_URL}/api/chat/conversations?userId=${currentUser.id}`);
       if (res.ok) {
         const data = await res.json();
-        const unread = (Array.isArray(data) ? data : []).filter(conv => {
-          const last = conv.lastMessage || conv.lastMsg;
-          if (!last) return false;
-          const senderId = last.senderId ?? last.sender?.id;
-          return senderId && Number(senderId) !== Number(currentUser.id);
-        });
-        setUnreadMessages(unread);
+        const convsWithMessages = (Array.isArray(data) ? data : [])
+          .filter(conv => Boolean(conv.lastMessage || conv.lastMsg))
+          .sort((a, b) => {
+            const timeA = new Date(a.lastMessage?.sentAt || 0).getTime();
+            const timeB = new Date(b.lastMessage?.sentAt || 0).getTime();
+            return timeB - timeA;
+          });
+        setRecentConversations(convsWithMessages);
       }
     } catch (_) {}
   }, [currentUser?.id]);
+
+  // ── Listen for custom event when messages are read in MessagesPage ─────────
+  useEffect(() => {
+    const handleMessagesReadEvent = (e) => {
+      if (e.detail?.conversationId) {
+        markConvAsRead(e.detail.conversationId, e.detail.lastMessageId);
+      }
+    };
+    window.addEventListener('messages-read', handleMessagesReadEvent);
+    return () => window.removeEventListener('messages-read', handleMessagesReadEvent);
+  }, [markConvAsRead]);
 
   // ── Polling ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!currentUser?.id) return;
     fetchInvitations();
-    fetchUnreadMessages();
+    fetchRecentMessages();
     const timer = setInterval(() => {
       fetchInvitations();
-      fetchUnreadMessages();
+      fetchRecentMessages();
     }, POLL_INTERVAL);
     return () => clearInterval(timer);
-  }, [fetchInvitations, fetchUnreadMessages, currentUser?.id]);
+  }, [fetchInvitations, fetchRecentMessages, currentUser?.id]);
 
   // ── WebSocket for real-time message events ─────────────────────────────────
   useEffect(() => {
@@ -71,7 +129,10 @@ export default function TopBar({ currentUser, setCurrentUser }) {
         reconnectDelay: 5000,
         onConnect: () => {
           client.subscribe(`/topic/chat/users/${currentUser.id}/notifications`, () => {
-            fetchUnreadMessages();
+            fetchRecentMessages();
+          });
+          client.subscribe(`/topic/users/${currentUser.id}/invitations`, () => {
+            fetchInvitations();
           });
         },
         onStompError: () => {},
@@ -82,7 +143,7 @@ export default function TopBar({ currentUser, setCurrentUser }) {
     return () => {
       try { stompClientRef.current?.deactivate(); } catch (_) {}
     };
-  }, [currentUser?.id, fetchUnreadMessages]);
+  }, [currentUser?.id, fetchRecentMessages]);
 
   // ── Close dropdowns on outside click ─────────────────────────────────────
   useEffect(() => {
@@ -109,8 +170,12 @@ export default function TopBar({ currentUser, setCurrentUser }) {
   // ── Accept / Decline invitation ───────────────────────────────────────────
   const handleAccept = async (invitationId) => {
     try {
-      await fetch(`${API_BASE_URL}/api/projects/invitations/${invitationId}/accept`, { method: 'POST' });
-      setInvitations(prev => prev.filter(i => i.id !== invitationId));
+      const res = await fetch(`${API_BASE_URL}/api/projects/invitations/${invitationId}/accept`, { method: 'POST' });
+      if (res.ok) {
+        setInvitations(prev => prev.filter(i => i.id !== invitationId));
+        // Auto-refresh Projects list if user is currently on the Projects page
+        window.dispatchEvent(new CustomEvent('project-invitation-accepted', { detail: { invitationId } }));
+      }
     } catch (_) {}
   };
 
@@ -121,20 +186,48 @@ export default function TopBar({ currentUser, setCurrentUser }) {
     } catch (_) {}
   };
 
-  // ── Navigate to conversation ──────────────────────────────────────────────
+  // ── Navigate to conversation and mark as read ──────────────────────────────
   const handleOpenConversation = (conv) => {
-    const otherId =
-      conv.participants?.find(p => Number(p.id) !== Number(currentUser.id))?.id
-      ?? conv.otherUserId;
+    const last = conv.lastMessage || conv.lastMsg;
+    markConvAsRead(conv.id, last?.id);
+
+    // Call backend mark as read
+    fetch(`${API_BASE_URL}/api/chat/conversations/${conv.id}/read?userId=${currentUser?.id}`, {
+      method: 'POST',
+    }).catch(() => {});
+
     setOpen(false);
-    if (otherId) {
+
+    const otherId =
+      conv.participants?.find(p => Number(p.id) !== Number(currentUser?.id))?.id
+      ?? conv.otherUserId;
+
+    if (conv.id) {
+      navigate(`/messages?convId=${conv.id}${otherId ? `&userId=${otherId}` : ''}`);
+    } else if (otherId) {
       navigate(`/messages?userId=${otherId}`);
     } else {
       navigate('/messages');
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
+  const formatTime = (isoString) => {
+    if (!isoString) return '';
+    try {
+      const d = new Date(isoString);
+      const now = new Date();
+      const diffMs = now - d;
+      const diffMins = Math.floor(diffMs / 60000);
+      if (diffMins < 1) return 'acum';
+      if (diffMins < 60) return `${diffMins}m`;
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) return `${diffHours}h`;
+      return d.toLocaleDateString('ro-RO', { day: '2-digit', month: 'short' });
+    } catch (_) {
+      return '';
+    }
+  };
+
   return (
     <div
       style={{
@@ -178,8 +271,8 @@ export default function TopBar({ currentUser, setCurrentUser }) {
                 backgroundColor: '#ef4444',
                 color: '#fff',
                 borderRadius: '50%',
-                width: '17px',
-                height: '17px',
+                width: '18px',
+                height: '18px',
                 fontSize: '10px',
                 fontWeight: '700',
                 display: 'flex',
@@ -200,7 +293,7 @@ export default function TopBar({ currentUser, setCurrentUser }) {
               position: 'absolute',
               top: '46px',
               right: 0,
-              width: '340px',
+              width: '350px',
               backgroundColor: '#ffffff',
               borderRadius: '12px',
               boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
@@ -209,7 +302,7 @@ export default function TopBar({ currentUser, setCurrentUser }) {
               fontFamily: 'sans-serif',
             }}
           >
-            {/* header */}
+            {/* Header */}
             <div
               style={{
                 padding: '14px 18px',
@@ -222,7 +315,7 @@ export default function TopBar({ currentUser, setCurrentUser }) {
               <span style={{ fontWeight: '700', fontSize: '14px', color: '#1e293b' }}>
                 Notificări
               </span>
-              {totalCount > 0 && (
+              {totalCount > 0 ? (
                 <span
                   style={{
                     backgroundColor: '#f6eff7',
@@ -235,11 +328,13 @@ export default function TopBar({ currentUser, setCurrentUser }) {
                 >
                   {totalCount} {totalCount === 1 ? 'nouă' : 'noi'}
                 </span>
+              ) : (
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Toate citite</span>
               )}
             </div>
 
-            {/* body */}
-            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+            {/* Body */}
+            <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
 
               {/* Invitations */}
               {invitations.length > 0 && (
@@ -277,11 +372,11 @@ export default function TopBar({ currentUser, setCurrentUser }) {
                 </div>
               )}
 
-              {/* Unread messages */}
-              {unreadMessages.length > 0 && (
+              {/* Messages list (keeps both unread and read recent messages) */}
+              {recentConversations.length > 0 && (
                 <div>
-                  <div style={sectionLabelStyle}>Mesaje noi</div>
-                  {unreadMessages.map(conv => {
+                  <div style={sectionLabelStyle}>Mesaje</div>
+                  {recentConversations.map(conv => {
                     const last = conv.lastMessage || conv.lastMsg;
                     const otherUser = conv.participants?.find(
                       p => Number(p.id) !== Number(currentUser?.id)
@@ -291,46 +386,90 @@ export default function TopBar({ currentUser, setCurrentUser }) {
                       last?.senderUsername ||
                       last?.sender?.username ||
                       otherUser?.username ||
+                      otherUser?.email?.split('@')[0] ||
                       (conv.name ? conv.name : 'Utilizator');
 
                     const displayName = conv.type === 'GROUP' && conv.name && rawSenderName !== conv.name
                       ? `${rawSenderName} (${conv.name})`
-                      : rawSenderName;
+                      : (conv.type === 'GROUP' && conv.name ? conv.name : rawSenderName);
 
                     const preview = last?.content ?? last?.text ?? '';
+                    const unread = isConvUnread(conv);
+                    const timeStr = formatTime(last?.sentAt);
+
                     return (
                       <div
                         key={conv.id}
                         onClick={() => handleOpenConversation(conv)}
-                        style={{ ...notifRowStyle, cursor: 'pointer', display: 'flex', gap: '10px', alignItems: 'flex-start' }}
-                        onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
-                        onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                        style={{
+                          ...notifRowStyle,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          gap: '10px',
+                          alignItems: 'center',
+                          backgroundColor: unread ? '#faf5fb' : 'transparent',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.backgroundColor = unread ? '#f5eef7' : '#f8fafc')}
+                        onMouseLeave={e => (e.currentTarget.style.backgroundColor = unread ? '#faf5fb' : 'transparent')}
                       >
-                        <span style={{ fontSize: '20px', flexShrink: 0 }}>💬</span>
-                        <div style={{ overflow: 'hidden' }}>
-                          <div style={notifTitleStyle}>{displayName}</div>
+                        <span style={{ fontSize: '20px', flexShrink: 0, opacity: unread ? 1 : 0.6 }}>💬</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span
+                              style={{
+                                fontSize: '13px',
+                                fontWeight: unread ? '700' : '500',
+                                color: unread ? '#1e293b' : '#64748b',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {displayName}
+                            </span>
+                            {timeStr && (
+                              <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: '6px', flexShrink: 0 }}>
+                                {timeStr}
+                              </span>
+                            )}
+                          </div>
                           <div
                             style={{
-                              ...notifSubStyle,
+                              fontSize: '12px',
+                              color: unread ? '#334155' : '#94a3b8',
+                              fontWeight: unread ? '600' : '400',
+                              marginTop: '2px',
                               whiteSpace: 'nowrap',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
                             }}
                           >
-                            {preview || '(mesaj nou)'}
+                            {preview || '(mesaj)'}
                           </div>
                         </div>
+                        {unread && (
+                          <span
+                            title="Necitit"
+                            style={{
+                              width: '8px',
+                              height: '8px',
+                              borderRadius: '50%',
+                              backgroundColor: '#5a3d5c',
+                              flexShrink: 0,
+                            }}
+                          />
+                        )}
                       </div>
                     );
                   })}
                 </div>
               )}
 
-              {/* Empty */}
-              {totalCount === 0 && (
+              {/* Empty state */}
+              {invitations.length === 0 && recentConversations.length === 0 && (
                 <div style={{ padding: '36px 18px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
                   <div style={{ fontSize: '30px', marginBottom: '10px' }}>🎉</div>
-                  Nicio notificare nouă.
+                  Nicio notificare disponibilă.
                 </div>
               )}
             </div>
