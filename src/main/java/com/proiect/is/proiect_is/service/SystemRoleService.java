@@ -53,7 +53,9 @@ public class SystemRoleService {
 
     public List<Map<String, Object>> getAllRolesWithUserCounts() {
         List<SystemRole> roles = systemRoleRepository.findAll();
-        List<User> allUsers = userRepository.findAll();
+        List<User> allUsers = userRepository.findAll().stream()
+                .filter(u -> !Boolean.TRUE.equals(u.getArchived()))
+                .collect(Collectors.toList());
 
         return roles.stream().map(role -> {
             long count = allUsers.stream()
@@ -165,7 +167,7 @@ public class SystemRoleService {
                     .collect(Collectors.toSet());
 
             long usersWithOtherFullAccess = userRepository.findAll().stream()
-                    .filter(u -> u.getRole() != null && otherFullAccessNames.contains(u.getRole().toLowerCase()))
+                    .filter(u -> !Boolean.TRUE.equals(u.getArchived()) && u.getRole() != null && otherFullAccessNames.contains(u.getRole().toLowerCase()))
                     .count();
 
             if (usersWithOtherFullAccess == 0) {
@@ -213,7 +215,7 @@ public class SystemRoleService {
                     .collect(Collectors.toSet());
 
             long usersWithOtherFullAccess = userRepository.findAll().stream()
-                    .filter(u -> u.getRole() != null && otherFullAccessNames.contains(u.getRole().toLowerCase()))
+                    .filter(u -> !Boolean.TRUE.equals(u.getArchived()) && u.getRole() != null && otherFullAccessNames.contains(u.getRole().toLowerCase()))
                     .count();
 
             if (usersWithOtherFullAccess == 0) {

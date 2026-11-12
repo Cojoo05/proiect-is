@@ -6,4 +6,5 @@ import java.util.List;
 
 public interface PollRepository extends JpaRepository<Poll, Long> {
     List<Poll> findByProjectIdOrderByCreatedAtDesc(Long projectId);
+    List<Poll> findByCreatedById(Long createdById);
 }

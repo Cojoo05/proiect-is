@@ -28,7 +28,7 @@ public class Task {
     User creator;
 
     @ManyToOne
-    @JoinColumn(name = "assignee_id", nullable = false)
+    @JoinColumn(name = "assignee_id")
     User assignee;
 
     @Column(nullable = false)

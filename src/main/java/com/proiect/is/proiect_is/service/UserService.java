@@ -18,6 +18,10 @@ public class UserService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User doesn't exists"));
 
+        if (Boolean.TRUE.equals(user.getArchived())) {
+            return false;
+        }
+
         String hash = user.getPassword();
 
         if (passwordEncoder.matches(password, hash)) {

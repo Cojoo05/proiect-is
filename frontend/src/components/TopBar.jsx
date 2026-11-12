@@ -136,9 +136,10 @@ export default function TopBar({ currentUser, setCurrentUser }) {
     const timer = setInterval(() => {
       fetchInvitations();
       fetchRecentMessages();
+      fetchCalendarNotifs();
     }, POLL_INTERVAL);
     return () => clearInterval(timer);
-  }, [fetchInvitations, fetchRecentMessages, currentUser?.id]);
+  }, [fetchInvitations, fetchRecentMessages, fetchCalendarNotifs, currentUser?.id]);
 
   // ── WebSocket for real-time message events ─────────────────────────────────
   useEffect(() => {
@@ -155,6 +156,9 @@ export default function TopBar({ currentUser, setCurrentUser }) {
           client.subscribe(`/topic/users/${currentUser.id}/invitations`, () => {
             fetchInvitations();
           });
+          client.subscribe(`/topic/users/${currentUser.id}/notifications`, () => {
+            fetchCalendarNotifs();
+          });
         },
         onStompError: () => {},
       });
@@ -164,7 +168,7 @@ export default function TopBar({ currentUser, setCurrentUser }) {
     return () => {
       try { stompClientRef.current?.deactivate(); } catch (_) {}
     };
-  }, [currentUser?.id, fetchRecentMessages]);
+  }, [currentUser?.id, fetchRecentMessages, fetchInvitations, fetchCalendarNotifs]);
 
   // ── Close dropdowns on outside click ─────────────────────────────────────
   useEffect(() => {
@@ -418,45 +422,89 @@ export default function TopBar({ currentUser, setCurrentUser }) {
             {/* Body */}
             <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
 
-                            {/* Calendar Notifications */}
+                            {/* Notifications */}
               {calendarNotifs.length > 0 && (
                 <div>
-                  <div style={sectionLabelStyle}>Invitații Ședințe Google Meet</div>
-                  {calendarNotifs.map(n => (
-                    <div key={n.id} style={notifRowStyle}>
-                      <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                        <span style={{ fontSize: '20px', flexShrink: 0 }}>🎥</span>
-                        <div style={{ flex: 1 }}>
-                          <div style={notifTitleStyle}>{n.title}</div>
-                          <div style={notifSubStyle}>{n.message}</div>
-                          {n.eventDate && (
-                            <div style={{ fontSize: '11px', color: '#2563eb', fontWeight: '700', marginTop: '3px' }}>
-                              📅 {n.eventDate} {n.eventStartTime ? `la ${n.eventStartTime}` : ''}
+                  {calendarNotifs.filter(n => n.type === 'task_assigned').length > 0 && (
+                    <div>
+                      <div style={sectionLabelStyle}>Task-uri Atribuite</div>
+                      {calendarNotifs.filter(n => n.type === 'task_assigned').map(n => (
+                        <div key={n.id} style={notifRowStyle}>
+                          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                            <span style={{ fontSize: '20px', flexShrink: 0 }}>📋</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={notifTitleStyle}>{n.title}</div>
+                              <div style={notifSubStyle}>{n.message}</div>
+                              {n.createdAt && (
+                                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px' }}>
+                                  🕒 {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                              )}
                             </div>
-                          )}
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '8px', paddingLeft: '30px' }}>
+                            <button
+                              onClick={() => {
+                                handleMarkNotifRead(n.id);
+                                setOpen(false);
+                                navigate('/tasks');
+                              }}
+                              style={acceptBtnStyle}
+                            >
+                              📋 Vezi Task-uri
+                            </button>
+                            <button
+                              onClick={() => handleMarkNotifRead(n.id)}
+                              style={declineBtnStyle}
+                            >
+                              Marchează citit
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '8px', paddingLeft: '30px' }}>
-                        {n.meetLink && (
-                          <a
-                            href={n.meetLink}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ ...acceptBtnStyle, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                            onClick={() => handleMarkNotifRead(n.id)}
-                          >
-                            🎥 Intră în Meet
-                          </a>
-                        )}
-                        <button
-                          onClick={() => handleMarkNotifRead(n.id)}
-                          style={declineBtnStyle}
-                        >
-                          Marchează citit
-                        </button>
-                      </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
+
+                  {calendarNotifs.filter(n => n.type !== 'task_assigned').length > 0 && (
+                    <div>
+                      <div style={sectionLabelStyle}>Invitații Ședințe Google Meet</div>
+                      {calendarNotifs.filter(n => n.type !== 'task_assigned').map(n => (
+                        <div key={n.id} style={notifRowStyle}>
+                          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                            <span style={{ fontSize: '20px', flexShrink: 0 }}>🎥</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={notifTitleStyle}>{n.title}</div>
+                              <div style={notifSubStyle}>{n.message}</div>
+                              {n.eventDate && (
+                                <div style={{ fontSize: '11px', color: '#2563eb', fontWeight: '700', marginTop: '3px' }}>
+                                  📅 {n.eventDate} {n.eventStartTime ? `la ${n.eventStartTime}` : ''}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '8px', paddingLeft: '30px' }}>
+                            {n.meetLink && (
+                              <a
+                                href={n.meetLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ ...acceptBtnStyle, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                onClick={() => handleMarkNotifRead(n.id)}
+                              >
+                                🎥 Intră în Meet
+                              </a>
+                            )}
+                            <button
+                              onClick={() => handleMarkNotifRead(n.id)}
+                              style={declineBtnStyle}
+                            >
+                              Marchează citit
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 

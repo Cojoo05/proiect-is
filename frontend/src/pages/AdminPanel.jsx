@@ -38,6 +38,14 @@ export default function AdminPanel({ currentUser }) {
   const [editingRoleId, setEditingRoleId] = useState(null);
   const [showRoleModal, setShowRoleModal] = useState(false);
 
+  // Project Transfer modal state when deleting an owner
+  const [transferModal, setTransferModal] = useState({
+    isOpen: false,
+    user: null,
+    ownedProjects: [],
+    transfers: {},
+  });
+
   // Status message
   const [statusMessage, setStatusMessage] = useState(null);
 
@@ -139,17 +147,54 @@ export default function AdminPanel({ currentUser }) {
   };
 
   const handleDeleteUser = async (id, username) => {
-    if (!window.confirm(`Ești sigur că vrei să ștergi utilizatorul "${username}"?`)) return;
-
     try {
-      const res = await fetch(`${USERS_API}/${id}`, { method: 'DELETE' });
+      // 1. Verificăm dacă utilizatorul deține proiecte
+      const summaryRes = await fetch(`${USERS_API}/${id}/projects-summary`);
+      const ownedProjects = summaryRes.ok ? await summaryRes.json() : [];
+
+      if (Array.isArray(ownedProjects) && ownedProjects.length > 0) {
+        // Pre-selectăm administratorul curent ca opțiune implicită
+        const initialTransfers = {};
+        ownedProjects.forEach(p => {
+          initialTransfers[p.id] = currentUser?.id || '';
+        });
+
+        setTransferModal({
+          isOpen: true,
+          user: { id, username },
+          ownedProjects,
+          transfers: initialTransfers,
+        });
+        return;
+      }
+
+      // Dacă nu deține proiecte, confirmare simplă
+      if (!window.confirm(`Ești sigur că vrei să ștergi utilizatorul "${username}"?`)) return;
+
+      await executeDeleteUser(id, {});
+    } catch (err) {
+      showStatus(err.message, "error");
+    }
+  };
+
+  const executeDeleteUser = async (id, projectTransfers) => {
+    try {
+      const res = await fetch(`${USERS_API}/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adminUserId: currentUser?.id,
+          projectTransfers: projectTransfers || {},
+        }),
+      });
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         throw new Error(data.message || "Eroare la ștergerea utilizatorului!");
       }
 
-      showStatus("Utilizator șters cu succes!", "success");
+      showStatus("Utilizator arhivat și date curățate cu succes!", "success");
+      setTransferModal({ isOpen: false, user: null, ownedProjects: [], transfers: {} });
       fetchUsers();
       fetchRoles();
     } catch (err) {
@@ -939,6 +984,144 @@ export default function AdminPanel({ currentUser }) {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Transfer Ownership Proiecte */}
+        {transferModal.isOpen && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(15, 23, 42, 0.6)',
+              backdropFilter: 'blur(4px)',
+              zIndex: 10000,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '20px',
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: '#ffffff',
+                borderRadius: '16px',
+                width: '100%',
+                maxWidth: '560px',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+                border: '1px solid #e2e8f0',
+                padding: '28px',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>
+                    👑 Transferă Proprietatea Proiectelor
+                  </h3>
+                  <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#64748b' }}>
+                    Utilizatorul <strong>{transferModal.user?.username}</strong> deține următoarele proiecte.
+                    Selectează persoana care va prelua ownership-ul fiecărui proiect:
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTransferModal({ isOpen: false, user: null, ownedProjects: [], transfers: {} })}
+                  style={{ background: 'none', border: 'none', fontSize: '20px', color: '#94a3b8', cursor: 'pointer' }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', margin: '20px 0' }}>
+                {transferModal.ownedProjects.map(proj => (
+                  <div
+                    key={proj.id}
+                    style={{
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '10px',
+                      padding: '16px',
+                      backgroundColor: '#f8fafc',
+                    }}
+                  >
+                    <div style={{ fontWeight: '600', fontSize: '14px', color: '#1e293b', marginBottom: '8px' }}>
+                      📁 {proj.name}
+                    </div>
+                    <label style={{ fontSize: '12px', fontWeight: '500', color: '#475569', display: 'block', marginBottom: '6px' }}>
+                      Noul Proprietar (Owner):
+                    </label>
+                    <select
+                      value={transferModal.transfers[proj.id] || currentUser?.id || ''}
+                      onChange={e => {
+                        const val = Number(e.target.value);
+                        setTransferModal(prev => ({
+                          ...prev,
+                          transfers: { ...prev.transfers, [proj.id]: val },
+                        }));
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '8px',
+                        fontSize: '13px',
+                        backgroundColor: '#ffffff',
+                        color: '#0f172a',
+                        fontWeight: '500',
+                      }}
+                    >
+                      <option value={currentUser?.id}>
+                        ⭐ Tu ({currentUser?.username || 'Administrator'}) {proj.members.some(m => m.id === currentUser?.id) ? '(deja membru)' : '(vei fi adăugat automat)'}
+                      </option>
+                      {proj.members.map(m => (
+                        <option key={m.id} value={m.id}>
+                          👤 {m.username} ({m.email})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px' }}>
+                <button
+                  type="button"
+                  onClick={() => setTransferModal({ isOpen: false, user: null, ownedProjects: [], transfers: {} })}
+                  style={{
+                    padding: '9px 16px',
+                    backgroundColor: '#ffffff',
+                    color: '#475569',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                  }}
+                >
+                  Anulează
+                </button>
+                <button
+                  type="button"
+                  onClick={() => executeDeleteUser(transferModal.user?.id, transferModal.transfers)}
+                  style={{
+                    padding: '9px 20px',
+                    backgroundColor: '#dc2626',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                  }}
+                >
+                  Transferă și Șterge Contul
+                </button>
+              </div>
             </div>
           </div>
         )}

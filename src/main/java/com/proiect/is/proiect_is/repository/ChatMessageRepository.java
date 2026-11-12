@@ -12,7 +12,6 @@ import java.util.List;
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> {
 
     List<ChatMessage> findByConversationIdOrderBySentAtAsc(Long conversationId);
-
     ChatMessage findFirstByConversationIdOrderBySentAtDesc(Long conversationId);
 
     void deleteByConversationId(Long conversationId);

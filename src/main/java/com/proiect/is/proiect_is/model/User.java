@@ -24,8 +24,19 @@ public class User {
     @Column(nullable = false)
     private String role;
 
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private Boolean archived = false;
+
     @Transient
     private Boolean hasAdminAccess = false;
+
+    public Boolean getArchived() {
+        return archived != null && archived;
+    }
+
+    public void setArchived(Boolean archived) {
+        this.archived = archived;
+    }
 
     public Long getId() {
         return id;

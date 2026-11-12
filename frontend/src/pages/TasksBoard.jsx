@@ -621,31 +621,16 @@ function TasksBoard({ currentUser }) {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: '6px', marginTop: '12px' }}>
-          {archived ? (
+        {archived && (
+          <div style={{ display: 'flex', gap: '6px', marginTop: '12px' }}>
             <button
               onClick={() => restoreTask(task)}
               style={{ flex: 1, padding: '7px 8px', backgroundColor: '#5a3d5c', color: '#ffffff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
             >
               ↩ Restaurează
             </button>
-          ) : (
-            <>
-              <button
-                onClick={() => archiveTask(task, 'DONE')}
-                style={{ flex: 1, padding: '6px 8px', backgroundColor: '#dcfce7', color: '#166534', border: '1px solid #86efac', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
-              >
-                ✅ Done
-              </button>
-              <button
-                onClick={() => archiveTask(task, 'CANCEL')}
-                style={{ flex: 1, padding: '6px 8px', backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
-              >
-                ✖ Cancel
-              </button>
-            </>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -697,6 +682,11 @@ function TasksBoard({ currentUser }) {
         {view === 'board' && (
           <div style={{ display: 'flex', gap: '8px' }}>
             <button style={ghostBtn} onClick={() => setBucketModal({ mode: 'create' })}>+ Coloană</button>
+            <button style={primaryBtn} onClick={() => setTaskModal({ mode: 'create' })}>+ Task nou</button>
+          </div>
+        )}
+        {view === 'given' && (
+          <div style={{ display: 'flex', gap: '8px' }}>
             <button style={primaryBtn} onClick={() => setTaskModal({ mode: 'create' })}>+ Task nou</button>
           </div>
         )}
@@ -791,29 +781,82 @@ function TasksBoard({ currentUser }) {
           {givenTasks.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8', lineHeight: 1.6 }}>
               Nu ai dat încă task-uri altor persoane.<br />
-              Folosește „+ Task nou” din tab-ul „Task-urile mele” și alege „Alocat către”.
+              Folosește „+ Task nou” și alege „Alocat către”.
             </div>
           ) : (
-            <div className="tk-grid">
-              {[...givenTasks].sort(sortByDeadline).map((t) => {
-                const archived = isArchived(t);
-                const state = t.status === 'TERMINAT' ? '✅ Done' : t.status === 'ANULAT' ? '❌ Cancel' : '🟣 Activ';
-                return (
-                  <div key={t.id} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', textAlign: 'left' }}>
-                    <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px', wordBreak: 'break-word' }}>{t.title}</div>
-                    {t.description && (
-                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{t.description}</div>
-                    )}
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginTop: '10px' }}>
-                      {renderDeadline(t, archived)}
-                      <span style={{ fontSize: '11px', fontWeight: '600', color: '#475569' }}>{state}</span>
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '8px' }}>
-                      Alocat către: <strong style={{ color: '#475569' }}>{t.assignee?.username}</strong>
-                    </div>
-                  </div>
-                );
-              })}
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: '700', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <th style={{ padding: '14px 18px' }}>Task</th>
+                    <th style={{ padding: '14px 18px' }}>Alocat către</th>
+                    <th style={{ padding: '14px 18px' }}>Termen limită</th>
+                    <th style={{ padding: '14px 18px' }}>Stare</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...givenTasks].sort(sortByDeadline).map((t, idx) => {
+                    const archived = isArchived(t);
+                    const statusBadge = t.status === 'TERMINAT' ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', backgroundColor: '#dcfce7', color: '#166534' }}>
+                        ✅ Done
+                      </span>
+                    ) : t.status === 'ANULAT' ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', backgroundColor: '#fee2e2', color: '#991b1b' }}>
+                        ❌ Cancel
+                      </span>
+                    ) : (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', backgroundColor: '#f3e8ff', color: '#6b21a8' }}>
+                        🟣 Activ
+                      </span>
+                    );
+
+                    return (
+                      <tr
+                        key={t.id}
+                        style={{
+                          borderBottom: idx === givenTasks.length - 1 ? 'none' : '1px solid #f1f5f9',
+                          transition: 'background-color 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f8fafc'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                      >
+                        <td style={{ padding: '14px 18px', verticalAlign: 'top' }}>
+                          <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px', wordBreak: 'break-word' }}>
+                            {t.title}
+                          </div>
+                          {t.description && (
+                            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5 }}>
+                              {t.description}
+                            </div>
+                          )}
+                          {t.projectId && (
+                            <div style={{ marginTop: '6px' }}>
+                              <span style={{ fontSize: '11px', fontWeight: '600', padding: '2px 8px', borderRadius: '8px', backgroundColor: '#f3e8ff', color: '#6b21a8' }}>
+                                📁 {t.project?.name || 'Proiect'}
+                              </span>
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: '14px 18px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontWeight: '600', color: '#334155' }}>
+                            <span style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#5a3d5c', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700' }}>
+                              {t.assignee?.username?.charAt(0)?.toUpperCase() || '?'}
+                            </span>
+                            <span>{t.assignee?.username || 'Neasignat'}</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '14px 18px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                          {renderDeadline(t, archived) || <span style={{ color: '#94a3b8', fontSize: '12px' }}>—</span>}
+                        </td>
+                        <td style={{ padding: '14px 18px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                          {statusBadge}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

@@ -82,18 +82,30 @@ public class ProjectController {
     }
 
     @PostMapping("/{projectId}/invite")
-    public ResponseEntity<ProjectInvitation> inviteUser(@PathVariable Long projectId,
-                                                         @RequestBody Map<String, Long> body) {
+    public ResponseEntity<?> inviteUser(@PathVariable Long projectId,
+                                         @RequestBody Map<String, Long> body) {
         Long invitedUserId = body.get("userId");
+        if (invitedUserId == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "ID-ul utilizatorului este obligatoriu."));
+        }
         Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new RuntimeException("Project not found"));
+                .orElseThrow(() -> new RuntimeException("Proiectul nu a fost găsit."));
         User invitedUser = userRepository.findById(invitedUserId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new RuntimeException("Utilizatorul nu a fost găsit."));
 
         // Check if already a member
         boolean alreadyMember = projectMemberRepository.findByProjectId(projectId)
                 .stream().anyMatch(m -> m.getUser().getId().equals(invitedUserId));
-        if (alreadyMember) return ResponseEntity.badRequest().build();
+        if (alreadyMember) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Utilizatorul este deja membru în acest proiect."));
+        }
+
+        // Check if already has a pending invitation
+        boolean alreadyPending = projectInvitationRepository.findByProjectId(projectId)
+                .stream().anyMatch(inv -> inv.getInvitedUser().getId().equals(invitedUserId) && "PENDING".equals(inv.getStatus()));
+        if (alreadyPending) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Acest utilizator are deja o invitație activă în așteptare pentru acest proiect."));
+        }
 
         LocalDateTime now = LocalDateTime.now();
         ProjectInvitation invitation = new ProjectInvitation();
@@ -101,7 +113,7 @@ public class ProjectController {
         invitation.setInvitedUser(invitedUser);
         invitation.setStatus("PENDING");
         invitation.setCreatedAt(now);
-        invitation.setExpiresAt(now.plusHours(48));
+        invitation.setExpiresAt(null);
         ProjectInvitation saved = projectInvitationRepository.save(invitation);
 
         try {
@@ -143,7 +155,7 @@ public class ProjectController {
                     invitation.setInvitedUser(invitedUser);
                     invitation.setStatus("PENDING");
                     invitation.setCreatedAt(now);
-                    invitation.setExpiresAt(now.plusHours(48));
+                    invitation.setExpiresAt(null);
                     projectInvitationRepository.save(invitation);
                 });
             }
@@ -154,7 +166,7 @@ public class ProjectController {
 
     @GetMapping("/invitations/user/{userId}")
     public ResponseEntity<List<ProjectInvitation>> getPendingInvitations(@PathVariable Long userId) {
-        List<ProjectInvitation> invitations = projectInvitationRepository.findActivePendingInvitations(userId, LocalDateTime.now());
+        List<ProjectInvitation> invitations = projectInvitationRepository.findActivePendingInvitations(userId);
         return ResponseEntity.ok(invitations);
     }
 
@@ -163,9 +175,7 @@ public class ProjectController {
         ProjectInvitation invitation = projectInvitationRepository.findById(invitationId)
                 .orElseThrow(() -> new RuntimeException("Invitation not found"));
 
-        if (!"PENDING".equals(invitation.getStatus()) || invitation.getExpiresAt().isBefore(LocalDateTime.now())) {
-            invitation.setStatus("EXPIRED");
-            projectInvitationRepository.save(invitation);
+        if (!"PENDING".equals(invitation.getStatus())) {
             return ResponseEntity.badRequest().build();
         }
 

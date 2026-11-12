@@ -31,7 +31,8 @@ function Login({ setCurrentUser }) {
         }
       } 
       else {
-        alert("Invalid username or password!");
+        const errText = await res.text().catch(() => '');
+        alert(errText || "Invalid username or password!");
       }
     })
     .catch((err) => {

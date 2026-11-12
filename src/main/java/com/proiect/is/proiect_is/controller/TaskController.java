@@ -1,10 +1,14 @@
 package com.proiect.is.proiect_is.controller;
 
+import com.proiect.is.proiect_is.model.AppNotification;
 import com.proiect.is.proiect_is.model.Task;
 import com.proiect.is.proiect_is.model.TaskBucket;
+import com.proiect.is.proiect_is.model.User;
+import com.proiect.is.proiect_is.repository.AppNotificationRepository;
 import com.proiect.is.proiect_is.repository.ProjectRepository;
 import com.proiect.is.proiect_is.repository.TaskBucketRepository;
 import com.proiect.is.proiect_is.repository.TaskRepository;
+import com.proiect.is.proiect_is.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -35,6 +39,12 @@ public class TaskController {
     private ProjectRepository projectRepository;
 
     @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private AppNotificationRepository appNotificationRepository;
+
+    @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
     @GetMapping("/my-tasks/{userId}")
@@ -62,8 +72,40 @@ public class TaskController {
         if (task.getProject() == null && task.getProjectId() != null) {
             projectRepository.findById(task.getProjectId()).ifPresent(task::setProject);
         }
+        if (task.getCreator() != null && task.getCreator().getId() != null) {
+            userRepository.findById(task.getCreator().getId()).ifPresent(task::setCreator);
+        }
+        if (task.getAssignee() != null && task.getAssignee().getId() != null) {
+            userRepository.findById(task.getAssignee().getId()).ifPresent(task::setAssignee);
+        }
         Task saved = taskRepository.save(task);
         broadcastProjectTask(saved);
+
+        // Notificare când se atribuie un task altui utilizator (nu și dacă își dă singur)
+        if (saved.getAssignee() != null && saved.getCreator() != null) {
+            Long assigneeId = saved.getAssignee().getId();
+            Long creatorId = saved.getCreator().getId();
+            if (!assigneeId.equals(creatorId)) {
+                String creatorName = saved.getCreator().getUsername() != null ? saved.getCreator().getUsername() : "Un utilizator";
+                AppNotification notif = new AppNotification();
+                notif.setRecipientUserId(assigneeId);
+                notif.setSenderUserId(creatorId);
+                notif.setSenderName(creatorName);
+                notif.setType("task_assigned");
+                notif.setTitle("Task nou primit");
+                notif.setMessage(creatorName + " ți-a atribuit un task: \"" + saved.getTitle() + "\"");
+                notif.setCreatedAt(LocalDateTime.now());
+                notif.setIsRead(false);
+                appNotificationRepository.save(notif);
+
+                if (messagingTemplate != null) {
+                    try {
+                        messagingTemplate.convertAndSend("/topic/users/" + assigneeId + "/notifications", notif);
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+
         return saved;
     }
 
