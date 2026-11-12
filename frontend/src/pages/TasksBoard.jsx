@@ -30,7 +30,7 @@ const PAGE_CSS = `
 }
 .tk-col {
   flex: 0 0 290px; width: 290px; display: flex; flex-direction: column; gap: 10px;
-  max-height: calc(100vh - 210px); min-height: 160px; padding: 12px;
+  max-height: calc(100vh - 170px); min-height: 160px; padding: 12px;
   background: #f1f5f9; border: 2px solid #e2e8f0; border-radius: 12px; transition: background .12s, border-color .12s;
 }
 .tk-col.tk-over { background: #f3e8ff; border-color: #5a3d5c; border-style: dashed; }
@@ -40,7 +40,7 @@ const PAGE_CSS = `
   scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent;
 }
 
-.tk-archive { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 76px; }
+.tk-archive { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 84px; }
 .tk-zone { border: 2px dashed; border-radius: 12px; padding: 16px 10px; text-align: center; cursor: pointer; transition: background .12s; }
 
 .tk-card { position: relative; transition: box-shadow .15s; }
@@ -671,11 +671,11 @@ function TasksBoard({ currentUser }) {
   return (
     <div
       className="tk-page"
-      style={{ minHeight: '100vh', backgroundColor: '#f8fafc', padding: '68px 24px 32px 24px', width: '100%' }}
+      style={{ minHeight: 'calc(100vh - 60px)', backgroundColor: '#f8fafc', padding: '24px 24px 32px 24px', width: '100%' }}
     >
       <style>{PAGE_CSS}</style>
 
-      {/* Header — top padding reserves space for the floating notification/account bar */}
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button

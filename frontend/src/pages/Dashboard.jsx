@@ -57,43 +57,7 @@ function Dashboard({ currentUser }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', fontFamily: 'sans-serif' }}>
-      <header
-        style={{
-          backgroundColor: '#ffffff',
-          borderBottom: '1px solid #e2e8f0',
-          padding: '16px 32px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div
-            style={{
-              width: '38px',
-              height: '38px',
-              borderRadius: '10px',
-              backgroundColor: '#5a3d5c',
-              color: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 'bold',
-              fontSize: '18px'
-            }}
-          >
-            P
-          </div>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.25rem', color: '#1e293b', fontWeight: '700' }}>Workspace</h1>
-            <span style={{ fontSize: '12px', color: '#64748b' }}>
-              Conectat ca <strong>{currentUser?.username || currentUser?.email || 'User'}</strong>
-            </span>
-          </div>
-        </div>
-      </header>
-
+    <div style={{ minHeight: 'calc(100vh - 60px)', backgroundColor: '#f8fafc', fontFamily: 'sans-serif' }}>
       <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '40px 24px' }}>
         <div style={{ marginBottom: '32px' }}>
           <h2 style={{ margin: '0 0 6px 0', fontSize: '1.75rem', color: '#0f172a', fontWeight: '700' }}>

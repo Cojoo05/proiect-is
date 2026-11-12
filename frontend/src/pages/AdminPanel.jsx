@@ -282,7 +282,7 @@ export default function AdminPanel({ currentUser }) {
   });
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', padding: '30px 24px', fontFamily: 'sans-serif' }}>
+    <div style={{ minHeight: 'calc(100vh - 60px)', backgroundColor: '#f8fafc', padding: '30px 24px', fontFamily: 'sans-serif' }}>
       <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
         
         {/* ── Top Bar / Header ───────────────────────────────────────────── */}

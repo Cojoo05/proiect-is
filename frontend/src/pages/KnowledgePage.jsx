@@ -479,7 +479,7 @@ export default function KnowledgePage({ currentUser }) {
   });
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', fontFamily: 'sans-serif' }}>
+    <div style={{ minHeight: 'calc(100vh - 60px)', backgroundColor: '#f8fafc', fontFamily: 'sans-serif' }}>
       {/* ── Top Header ───────────────────────────────────────────────── */}
       <header
         style={{
@@ -548,7 +548,7 @@ export default function KnowledgePage({ currentUser }) {
       </header>
 
       {/* ── Main Workspace: 2-Column Master-Detail ───────────────────── */}
-      <div style={{ display: 'flex', maxWidth: '1440px', margin: '0 auto', height: 'calc(100vh - 67px)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', maxWidth: '1440px', margin: '0 auto', height: 'calc(100vh - 127px)', overflow: 'hidden' }}>
 
         {/* ── Left Sidebar (Notes List) ───────────────────────────────── */}
         <aside
