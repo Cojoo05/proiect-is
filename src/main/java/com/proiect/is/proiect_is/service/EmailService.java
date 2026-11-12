@@ -81,13 +81,12 @@ public class EmailService {
                 System.out.println("✅ Email-uri trimise cu succes prin Gmail SMTP (" + senderEmail + ") către: " + toEmails);
                 return true;
             } catch (Exception e) {
-                System.err.println("⚠️ SMTP avertisment la trimitere prin " + senderEmail + ": " + e.getMessage());
-                System.err.println("💡 Notă Google: Dacă Google cere parolă de aplicație (App Password) în loc de parolă standard, generați un App Password de 16 caractere din contul Google > Securitate.");
+                System.err.println("⚠️ SMTP eroare la trimitere prin " + senderEmail + ": " + e.getMessage());
+                return false;
             }
         } else {
             System.out.println("ℹ️ JavaMailSender nu este instanțiat momentan.");
+            return false;
         }
-
-        return true;
     }
 }
