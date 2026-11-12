@@ -5,13 +5,6 @@ function Dashboard({ currentUser }) {
 
   const apps = [
     {
-      id: 'calendar',
-      title: 'Calendar',
-      icon: '📅',
-      description: 'Schedule & Events',
-      path: '/calendar'
-    },
-    {
       id: 'for-me',
       title: 'For Me',
       icon: '👤',
@@ -106,41 +99,24 @@ function Dashboard({ currentUser }) {
             >
               <div
                 style={{
-                  width: '60px',
-                  height: '60px',
-                  borderRadius: '14px',
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '12px',
                   backgroundColor: '#f6eff7',
                   color: '#5a3d5c',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: '28px',
-                  marginBottom: '16px',
-                  border: '1px solid #ebd9eb'
+                  marginBottom: '16px'
                 }}
               >
                 {app.icon}
               </div>
-
-              <h3
-                style={{
-                  margin: '0 0 6px 0',
-                  fontSize: '1.15rem',
-                  fontWeight: '600',
-                  color: '#1e293b'
-                }}
-              >
+              <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', color: '#1e293b', fontWeight: '600' }}>
                 {app.title}
               </h3>
-
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: '0.875rem',
-                  color: '#64748b',
-                  lineHeight: '1.4'
-                }}
-              >
+              <p style={{ margin: 0, fontSize: '13px', color: '#64748b', lineHeight: '1.4' }}>
                 {app.description}
               </p>
             </div>

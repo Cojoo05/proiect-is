@@ -271,7 +271,7 @@ function Calendar({ currentUser }) {
 
     if (emailList.length === 0) return false;
 
-    // 1. Apel către backend Email Service (noreply@proiect-is.ro)
+    // 1. Apel către backend Email Service (proiect.is@gmail.com)
     try {
       await fetch(`${CAL_API}/send-invite-email`, {
         method:  'POST',
@@ -351,7 +351,7 @@ function Calendar({ currentUser }) {
       ev.attendees,
       ev.description
     );
-    showToast(`✅ Invitație trimisă automat pe email la ${count} colegi de pe noreply@proiect-is.ro!`);
+    showToast(`✅ Invitație trimisă automat pe email la ${count} colegi de pe proiect.is@gmail.com!`);
   };
 
   /* ════════════════ CRUD Ședințe ════════════════ */
@@ -482,7 +482,7 @@ function Calendar({ currentUser }) {
         eventForm.attendees,
         eventForm.description
       );
-      showToast(`✅ Ședință salvată! Invitațiile pe email au fost trimise la ${count} colegi de pe noreply@proiect-is.ro!`);
+      showToast(`✅ Ședință salvată! Invitațiile pe email au fost trimise la ${count} colegi de pe proiect.is@gmail.com!`);
     } else {
       showToast('✨ Ședință programată cu succes!');
     }
@@ -1022,7 +1022,7 @@ function Calendar({ currentUser }) {
                       {ev.attendees && (
                         <button
                           onClick={() => handleResendInvites(ev)}
-                          title="Trimite automat invitațiile pe email tuturor colegilor de pe noreply@proiect-is.ro"
+                          title="Trimite automat invitațiile pe email tuturor colegilor de pe proiect.is@gmail.com"
                           style={{
                             display: 'inline-flex', alignItems: 'center', gap: '5px',
                             fontSize: '12px', backgroundColor: '#fef3c7', color: '#92400e',
@@ -1352,7 +1352,7 @@ function Calendar({ currentUser }) {
                       onChange={e => setEventForm({ ...eventForm, sendEmailAutomatically: e.target.checked })}
                       style={{ width: '16px', height: '16px', accentColor: '#059669' }}
                     />
-                    ✉️ Trimite automat invitațiile pe email (noreply@proiect-is.ro) la salvare
+                    ✉️ Trimite automat invitațiile pe email (proiect.is@gmail.com) la salvare
                   </label>
                 </div>
               )}

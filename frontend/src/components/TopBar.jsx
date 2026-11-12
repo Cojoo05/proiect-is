@@ -704,6 +704,32 @@ export default function TopBar({ currentUser, setCurrentUser }) {
               <button
                 onClick={() => {
                   setProfileOpen(false);
+                  navigate('/calendar');
+                }}
+                style={{
+                  width: '100%',
+                  padding: '9px 16px',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#1e293b',
+                  fontWeight: '600',
+                  textAlign: 'left',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                <span style={{ fontSize: '15px' }}>📅</span>
+                Calendar
+              </button>
+              <button
+                onClick={() => {
+                  setProfileOpen(false);
                   navigate('/tasks');
                 }}
                 style={{

@@ -1,6 +1,7 @@
 package com.proiect.is.proiect_is.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
@@ -13,8 +14,11 @@ public class EmailService {
     @Autowired(required = false)
     private JavaMailSender mailSender;
 
+    @Value("${spring.mail.username:proiect.is@gmail.com}")
+    private String senderEmail;
+
     /**
-     * Trimite email automat de invitație la o ședință Google Meet de pe adresa noreply.
+     * Trimite email automat de invitație la o ședință Google Meet de pe contul proiect.is@gmail.com.
      */
     public boolean sendMeetingInvitation(
             List<String> toEmails,
@@ -53,10 +57,10 @@ public class EmailService {
             body.append("Apasă pe link-ul de mai sus la ora stabilită pentru a te conecta.\n\n");
         }
 
-        body.append("Mesaj trimis automat de sistemul de notificări Proiect IS (noreply@proiect-is.ro).\n");
+        body.append("Mesaj trimis automat de contul ").append(senderEmail).append(" (Proiect IS).\n");
 
         System.out.println("==================================================");
-        System.out.println("📧 [NOREPLY DISPATCHER] Trimitere invitație de la: noreply@proiect-is.ro");
+        System.out.println("📧 [GMAIL SMTP DISPATCHER] Trimitere invitație de la: " + senderEmail);
         System.out.println("📌 Ședință: " + eventTitle);
         System.out.println("📅 Dată: " + eventDate + " la ora " + startTime);
         System.out.println("🎥 Link: " + meetLink);
@@ -68,17 +72,20 @@ public class EmailService {
                 for (String email : toEmails) {
                     if (email == null || !email.contains("@")) continue;
                     SimpleMailMessage message = new SimpleMailMessage();
-                    message.setFrom("noreply@proiect-is.ro");
+                    message.setFrom(senderEmail);
                     message.setTo(email.trim());
                     message.setSubject(subject);
                     message.setText(body.toString());
                     mailSender.send(message);
                 }
-                System.out.println("✅ Email-uri trimise cu succes prin SMTP către: " + toEmails);
+                System.out.println("✅ Email-uri trimise cu succes prin Gmail SMTP (" + senderEmail + ") către: " + toEmails);
                 return true;
             } catch (Exception e) {
-                System.err.println("⚠️ SMTP avertisment: " + e.getMessage() + ". Invitațiile au fost înregistrate și trimise ca notificări.");
+                System.err.println("⚠️ SMTP avertisment la trimitere prin " + senderEmail + ": " + e.getMessage());
+                System.err.println("💡 Notă Google: Dacă Google cere parolă de aplicație (App Password) în loc de parolă standard, generați un App Password de 16 caractere din contul Google > Securitate.");
             }
+        } else {
+            System.out.println("ℹ️ JavaMailSender nu este instanțiat momentan.");
         }
 
         return true;
