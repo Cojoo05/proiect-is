@@ -26,7 +26,7 @@ public class SystemRole {
     @Column(nullable = false)
     private boolean isDefault = false;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "boolean default true")
     private boolean canCreateKnowledge = true;
 
     @Column(nullable = false)

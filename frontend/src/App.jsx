@@ -11,12 +11,12 @@ import ProjectsDashboard from './pages/ProjectsDashboard.jsx';
 import ProjectDetail from './pages/ProjectDetail.jsx';
 import MessagesPage from './pages/MessagesPage.jsx';
 import NotesPage from './pages/ForMeApp/NotesPage.jsx';
-import KnowledgePage from './pages/KnowledgePage.jsx';
+import RemindersPage from './pages/ForMeApp/RemindersPage.jsx';
 import TopBar from './components/TopBar.jsx';
 import './App.css';
 
 // Layout that injects TopBar on every authenticated page
-function AuthLayout({ currentUser, setCurrentUser, children }) {
+function AuthLayout({ currentUser, setCurrentUser }) {
   return (
     <>
       <TopBar currentUser={currentUser} setCurrentUser={setCurrentUser} />
@@ -66,7 +66,7 @@ function App() {
           <Route path="/calendar" element={<Calendar currentUser={currentUser} />} />
           <Route path="/for-me" element={<ForMeDashboard />} />
           <Route path="/for-me/notes" element={<NotesPage currentUser={currentUser} />} />
-          <Route path="/knowledge" element={<KnowledgePage currentUser={currentUser} />} />
+          <Route path="/for-me/reminders" element={<RemindersPage currentUser={currentUser} />} />
         </Route>
       </Routes>
     </BrowserRouter>

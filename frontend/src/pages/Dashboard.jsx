@@ -5,13 +5,6 @@ function Dashboard({ currentUser }) {
 
   const apps = [
     {
-      id: 'tasks',
-      title: 'Tasks',
-      icon: '✅',
-      description: 'Gestionează activitățile, termenele limită și prioritățile echipei',
-      path: '/tasks'
-    },
-    {
       id: 'calendar',
       title: 'Calendar',
       icon: '📅',

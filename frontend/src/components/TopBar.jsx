@@ -578,6 +578,32 @@ export default function TopBar({ currentUser, setCurrentUser }) {
             {/* Menu items */}
             <div style={{ padding: '6px 0' }}>
               <button
+                onClick={() => {
+                  setProfileOpen(false);
+                  navigate('/tasks');
+                }}
+                style={{
+                  width: '100%',
+                  padding: '9px 16px',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#1e293b',
+                  fontWeight: '500',
+                  textAlign: 'left',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                <span style={{ fontSize: '15px' }}>✅</span>
+                Tasks
+              </button>
+              <button
                 onClick={handleLogout}
                 style={{
                   width: '100%',

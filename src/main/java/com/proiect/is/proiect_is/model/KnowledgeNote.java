@@ -16,7 +16,7 @@ public class KnowledgeNote {
     @Column(nullable = false)
     private String title;
 
-    @Column(columnDefinition = "LONGTEXT", nullable = false)
+    @Column(columnDefinition = "TEXT", nullable = false)
     private String content;
 
     @Column(nullable = false)
@@ -39,7 +39,7 @@ public class KnowledgeNote {
     @Column(length = 1000)
     private String youtubeUrl;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(columnDefinition = "TEXT")
     private String imagesJson; // Stores JSON array of image URLs or base64 data strings
 
     @Column(nullable = false, length = 500)
