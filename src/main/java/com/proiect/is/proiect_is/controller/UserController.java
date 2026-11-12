@@ -341,9 +341,7 @@ public class UserController {
 
         // Actualizăm emailul contului la cel de Google conform instrucțiunii
         user.setEmail(googleEmail);
-        user.setGoogleEmail(googleEmail);
         user.setGoogleId(googleId);
-        user.setGoogleSynced(true);
 
         User saved = userRepository.save(user);
         enrichUserRole(saved);
@@ -368,8 +366,6 @@ public class UserController {
             return ResponseEntity.notFound().build();
         }
 
-        user.setGoogleSynced(false);
-        user.setGoogleEmail(null);
         user.setGoogleId(null);
 
         User saved = userRepository.save(user);

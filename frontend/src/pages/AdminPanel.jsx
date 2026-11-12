@@ -611,7 +611,7 @@ export default function AdminPanel({ currentUser }) {
                           </select>
                         </td>
                         <td style={tdStyle}>
-                          {user.googleSynced ? (
+                          {(user.googleSynced || Boolean(user.googleId)) ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                               <span
                                 style={{
@@ -626,7 +626,7 @@ export default function AdminPanel({ currentUser }) {
                                   gap: '4px',
                                 }}
                               >
-                                🟢 {user.googleEmail || 'Sincronizat'}
+                                🟢 {user.email || 'Sincronizat'}
                               </span>
                               <button
                                 type="button"

@@ -172,7 +172,7 @@ export default function Settings({ currentUser, setCurrentUser }) {
     tokenClient.requestAccessToken({ prompt: 'consent' });
   };
 
-  const isSynced = Boolean(user.googleSynced);
+  const isSynced = Boolean(user.googleSynced || user.googleId);
 
   return (
     <div style={{ minHeight: 'calc(100vh - 60px)', backgroundColor: '#f8fafc', padding: '24px 24px 40px', textAlign: 'left' }}>
@@ -335,7 +335,7 @@ export default function Settings({ currentUser, setCurrentUser }) {
                         </div>
                         {isSynced && (
                           <div style={{ fontSize: '12px', color: '#166534', fontWeight: '600', marginTop: '4px', textAlign: 'left' }}>
-                            ✅ Cont Google salvat: <strong>{user.googleEmail || user.email}</strong>
+                            ✅ Cont Google salvat: <strong>{user.email}</strong>
                           </div>
                         )}
                         {!isSynced && (

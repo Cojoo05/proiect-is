@@ -27,33 +27,18 @@ public class User {
     @Column(nullable = false, columnDefinition = "boolean default false")
     private Boolean archived = false;
 
-    @Column(name = "google_email")
-    private String googleEmail;
-
     @Column(name = "google_id")
     private String googleId;
-
-    @Column(name = "google_synced", columnDefinition = "boolean default false")
-    private Boolean googleSynced = false;
 
     @Transient
     private Boolean hasAdminAccess = false;
 
+    @JsonProperty("googleSynced")
     public Boolean getGoogleSynced() {
-        return googleSynced != null && googleSynced;
+        return googleId != null && !googleId.trim().isEmpty();
     }
 
-    public void setGoogleSynced(Boolean googleSynced) {
-        this.googleSynced = googleSynced;
-    }
 
-    public String getGoogleEmail() {
-        return googleEmail;
-    }
-
-    public void setGoogleEmail(String googleEmail) {
-        this.googleEmail = googleEmail;
-    }
 
     public String getGoogleId() {
         return googleId;
