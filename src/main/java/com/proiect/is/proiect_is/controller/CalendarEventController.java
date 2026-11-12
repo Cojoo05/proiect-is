@@ -128,7 +128,7 @@ public class CalendarEventController {
         resp.put("success", true);
         resp.put("sentViaSmtp", sent);
         resp.put("recipientsCount", toEmails.size());
-        resp.put("message", "Invitatii procesate pentru " + toEmails.size() + " destinatari.");
+        resp.put("message", sent ? "Invitații expediate cu succes via Gmail." : "Eroare autentificare SMTP Gmail (Google impune App Password).");
         return ResponseEntity.ok(resp);
     }
 
