@@ -12,6 +12,7 @@ import ProjectDetail from './pages/ProjectDetail.jsx';
 import MessagesPage from './pages/MessagesPage.jsx';
 import NotesPage from './pages/ForMeApp/NotesPage.jsx';
 import RemindersPage from './pages/ForMeApp/RemindersPage.jsx';
+import Settings from './pages/Settings.jsx';
 import TopBar from './components/TopBar.jsx';
 import './App.css';
 
@@ -60,6 +61,7 @@ function App() {
             element={isAdmin ? <AdminPanel currentUser={currentUser} /> : <Navigate to="/dashboard" replace />}
           />
           <Route path="/tasks" element={<TasksBoard currentUser={currentUser} />} />
+          <Route path="/settings" element={<Settings currentUser={currentUser} setCurrentUser={setCurrentUser} />} />
           <Route path="/projects" element={<ProjectsDashboard currentUser={currentUser} />} />
           <Route path="/projects/:projectId" element={<ProjectDetail currentUser={currentUser} />} />
           <Route path="/messages" element={<MessagesPage currentUser={currentUser} />} />

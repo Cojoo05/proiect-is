@@ -662,15 +662,7 @@ function TasksBoard({ currentUser }) {
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button
-            onClick={() => navigate('/dashboard')}
-            style={{ padding: '7px 14px', backgroundColor: '#ffffff', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
-          >
-            ⬅️ Dashboard
-          </button>
-          <h1 style={{ margin: 0, fontSize: '1.5rem', color: '#1e293b', fontWeight: '800', lineHeight: 1.2 }}>✅ Tasks</h1>
-        </div>
+        <h1 style={{ margin: 0, fontSize: '1.5rem', color: '#1e293b', fontWeight: '800', lineHeight: 1.2 }}>✅ Tasks</h1>
 
         {(view === 'board' || view === 'given') && (
           <div style={{ display: 'flex', gap: '4px', padding: '4px', backgroundColor: '#e2e8f0', borderRadius: '10px' }}>

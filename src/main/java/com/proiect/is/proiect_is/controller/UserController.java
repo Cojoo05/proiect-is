@@ -316,6 +316,68 @@ public class UserController {
         return ResponseEntity.ok(Map.of("message", "Utilizatorul a fost arhivat și datele aferente au fost curățate cu succes!"));
     }
 
+    // --- SINCRONIZARE GOOGLE ---
+    @PostMapping("/{id}/sync-google")
+    public ResponseEntity<?> syncGoogle(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        User user = userRepository.findById(id).orElse(null);
+        if (user == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        String googleEmail = body.get("googleEmail");
+        String googleId = body.get("googleId");
+
+        if (googleEmail == null || googleEmail.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Adresa de email Google este obligatorie!"));
+        }
+
+        googleEmail = googleEmail.trim().toLowerCase();
+
+        // Dacă adresa de email diferă de a altui utilizator, verificăm unicitatea
+        Optional<User> existingEmailUser = userRepository.findByEmail(googleEmail);
+        if (existingEmailUser.isPresent() && !existingEmailUser.get().getId().equals(user.getId())) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Această adresă de email Google este deja asociată altui cont!"));
+        }
+
+        // Actualizăm emailul contului la cel de Google conform instrucțiunii
+        user.setEmail(googleEmail);
+        user.setGoogleEmail(googleEmail);
+        user.setGoogleId(googleId);
+        user.setGoogleSynced(true);
+
+        User saved = userRepository.save(user);
+        enrichUserRole(saved);
+
+        return ResponseEntity.ok(saved);
+    }
+
+    // --- DESINCRONIZARE GOOGLE (DOAR ADMIN) ---
+    @PostMapping("/{id}/desync-google")
+    public ResponseEntity<?> desyncGoogle(@PathVariable Long id, @RequestParam(required = false) Long adminId) {
+        if (adminId != null) {
+            User admin = userRepository.findById(adminId).orElse(null);
+            enrichUserRole(admin);
+            if (admin == null || !Boolean.TRUE.equals(admin.getHasAdminAccess())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("message", "Doar un administrator poate desincroniza contul Google!"));
+            }
+        }
+
+        User user = userRepository.findById(id).orElse(null);
+        if (user == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        user.setGoogleSynced(false);
+        user.setGoogleEmail(null);
+        user.setGoogleId(null);
+
+        User saved = userRepository.save(user);
+        enrichUserRole(saved);
+
+        return ResponseEntity.ok(saved);
+    }
+
     @PostMapping("/login")
     public ResponseEntity<?> loginUser(@RequestBody User loginData) {
         Optional<User> uOpt = userRepository.findByUsername(loginData.getUsername());

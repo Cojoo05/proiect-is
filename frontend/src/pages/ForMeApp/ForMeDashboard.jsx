@@ -32,15 +32,8 @@ function ForMeDashboard() {
 
   return (
     <div style={{ padding: '40px', fontFamily: 'sans-serif', textAlign: 'center' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '1000px', margin: '0 auto', marginBottom: '20px' }}>
-        <button
-          onClick={() => navigate('/dashboard')}
-          style={{ padding: '8px 16px', cursor: 'pointer', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '600' }}
-        >
-          ⬅️ Back to Dashboard
-        </button>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', maxWidth: '1000px', margin: '0 auto', marginBottom: '20px' }}>
         <h1 style={{ fontSize: '2.5rem', margin: 0, color: '#1e293b' }}>🌙 For Me</h1>
-        <div style={{ width: '100px' }}></div>
       </div>
       
       <p style={{ color: '#64748b', marginBottom: '40px', fontSize: '15px' }}>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { API_BASE_URL, WS_BASE_URL } from '../config.js';
 import SockJS from 'sockjs-client/dist/sockjs.min.js';
 import { Client } from '@stomp/stompjs';
@@ -8,6 +8,7 @@ const POLL_INTERVAL = 15_000;
 
 export default function TopBar({ currentUser, setCurrentUser }) {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -275,37 +276,37 @@ export default function TopBar({ currentUser, setCurrentUser }) {
         justifyContent: 'space-between',
       }}
     >
-      {/* ── Left Branding Badge ────────────────────────────────────────── */}
-      <div
-        onClick={() => navigate('/dashboard')}
-        title="Mergi la Dashboard"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          cursor: 'pointer',
-          userSelect: 'none',
-        }}
-      >
+      {/* ── Left Branding Badge & Back to Dashboard ──────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
         <div
+          onClick={() => navigate('/dashboard')}
+          title="Mergi la Dashboard"
           style={{
-            width: '36px',
-            height: '36px',
-            borderRadius: '10px',
-            backgroundColor: '#5a3d5c',
-            color: '#ffffff',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 'bold',
-            fontSize: '18px',
-            boxShadow: '0 2px 5px rgba(90, 61, 92, 0.25)',
-            flexShrink: 0,
+            gap: '12px',
+            cursor: 'pointer',
+            userSelect: 'none',
           }}
         >
-          P
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
+              backgroundColor: '#5a3d5c',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 'bold',
+              fontSize: '18px',
+              boxShadow: '0 2px 5px rgba(90, 61, 92, 0.25)',
+              flexShrink: 0,
+            }}
+          >
+            P
+          </div>
           <span
             style={{
               margin: 0,
@@ -318,10 +319,40 @@ export default function TopBar({ currentUser, setCurrentUser }) {
           >
             Workspace
           </span>
-          <span style={{ fontSize: '12px', color: '#475569', lineHeight: '1.2' }}>
-            Conectat ca <strong style={{ color: '#1e293b' }}>{currentUser?.username || currentUser?.email || 'User'}</strong>
-          </span>
         </div>
+
+        {location.pathname !== '/dashboard' && (
+          <button
+            onClick={() => navigate('/dashboard')}
+            title="Înapoi la Dashboard"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              backgroundColor: '#ffffff',
+              color: '#334155',
+              border: '1px solid #cbd5e1',
+              borderRadius: '6px',
+              fontSize: '13px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.backgroundColor = '#f1f5f9';
+              e.currentTarget.style.borderColor = '#94a3b8';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.backgroundColor = '#ffffff';
+              e.currentTarget.style.borderColor = '#cbd5e1';
+            }}
+          >
+            <span style={{ fontSize: '13px' }}>⬅️</span>
+            <span>Dashboard</span>
+          </button>
+        )}
       </div>
 
       {/* ── Right Actions (Bell + Profile) ─────────────────────────────── */}
@@ -800,6 +831,32 @@ export default function TopBar({ currentUser, setCurrentUser }) {
               >
                 <span style={{ fontSize: '15px' }}>✅</span>
                 Tasks
+              </button>
+              <button
+                onClick={() => {
+                  setProfileOpen(false);
+                  navigate('/settings');
+                }}
+                style={{
+                  width: '100%',
+                  padding: '9px 16px',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#1e293b',
+                  fontWeight: '500',
+                  textAlign: 'left',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                <span style={{ fontSize: '15px' }}>⚙️</span>
+                Settings
               </button>
               <button
                 onClick={handleLogout}

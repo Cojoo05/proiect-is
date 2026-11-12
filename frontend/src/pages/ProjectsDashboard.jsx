@@ -79,12 +79,6 @@ function ProjectsDashboard({ currentUser }) {
   return (
     <div style={{ padding: '30px', fontFamily: 'sans-serif', maxWidth: '1100px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
-        <button
-          onClick={() => navigate('/dashboard')}
-          style={{ padding: '8px 16px', cursor: 'pointer', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '5px' }}
-        >
-          ⬅️ Back
-        </button>
         <h1 style={{ margin: 0, color: '#1e293b', fontSize: '2rem' }}>📁 Projects</h1>
         <button
           onClick={() => setIsModalOpen(true)}

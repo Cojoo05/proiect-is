@@ -231,6 +231,27 @@ export default function AdminPanel({ currentUser }) {
     }
   };
 
+  // ── Desincronizare Google (Admin only) ──────────────────────────────────────
+  const handleDesyncGoogle = async (targetUser) => {
+    if (!window.confirm(`Ești sigur că vrei să desincronizezi contul Google al utilizatorului "${targetUser.username}"?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`${USERS_API}/${targetUser.id}/desync-google?adminId=${currentUser?.id}`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        showStatus(`Contul Google al utilizatorului ${targetUser.username} a fost desincronizat cu succes!`, "success");
+        fetchUsers();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showStatus(err.message || "Eroare la desincronizarea contului Google.", "error");
+      }
+    } catch (err) {
+      showStatus("Eroare la comunicarea cu serverul.", "error");
+    }
+  };
+
   // ── Role CRUD ──────────────────────────────────────────────────────────────
   const handleOpenNewRoleModal = () => {
     setRoleFormData({
@@ -331,32 +352,7 @@ export default function AdminPanel({ currentUser }) {
       <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
         
         {/* ── Top Bar / Header ───────────────────────────────────────────── */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <div>
-            <button
-              onClick={() => navigate('/dashboard')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                backgroundColor: '#ffffff',
-                color: '#475569',
-                border: '1px solid #cbd5e1',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '600',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
-              onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#ffffff')}
-            >
-              ⬅️ Înapoi la Dashboard
-            </button>
-          </div>
-
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '24px' }}>
           <div style={{ textAlign: 'right' }}>
             <span style={{ fontSize: '12px', color: '#64748b' }}>Conectat ca Admin:</span>{' '}
             <strong style={{ color: '#1e293b' }}>{currentUser?.username || 'Admin'}</strong>
@@ -565,6 +561,7 @@ export default function AdminPanel({ currentUser }) {
                     <th onClick={() => handleSort('email')} style={{ ...thStyle, cursor: 'pointer' }}>Email ↕</th>
                     <th style={thStyle}>Parolă</th>
                     <th onClick={() => handleSort('role')} style={{ ...thStyle, cursor: 'pointer' }}>Rol Atribuit ↕</th>
+                    <th style={thStyle}>Google Sync</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Acțiuni</th>
                   </tr>
                 </thead>
@@ -613,6 +610,48 @@ export default function AdminPanel({ currentUser }) {
                             ))}
                           </select>
                         </td>
+                        <td style={tdStyle}>
+                          {user.googleSynced ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                  padding: '3px 8px',
+                                  borderRadius: '12px',
+                                  backgroundColor: '#dcfce7',
+                                  color: '#166534',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                🟢 {user.googleEmail || 'Sincronizat'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleDesyncGoogle(user)}
+                                style={{
+                                  padding: '3px 8px',
+                                  backgroundColor: '#fee2e2',
+                                  color: '#dc2626',
+                                  border: '1px solid #fca5a5',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                }}
+                                title="Desincronizează contul de Google"
+                              >
+                                🔗 Desincronizează
+                              </button>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>
+                              Nesincronizat
+                            </span>
+                          )}
+                        </td>
                         <td style={{ ...tdStyle, textAlign: 'right' }}>
                           <button
                             onClick={() => handleEditUser(user)}
@@ -651,7 +690,7 @@ export default function AdminPanel({ currentUser }) {
                   })}
                   {sortedUsers.length === 0 && (
                     <tr>
-                      <td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>
+                      <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>
                         Niciun utilizator găsit.
                       </td>
                     </tr>
