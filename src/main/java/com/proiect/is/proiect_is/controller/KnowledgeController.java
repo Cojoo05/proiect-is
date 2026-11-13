@@ -1,9 +1,11 @@
 package com.proiect.is.proiect_is.controller;
 
 import com.proiect.is.proiect_is.model.KnowledgeCategory;
+import com.proiect.is.proiect_is.model.KnowledgeFolder;
 import com.proiect.is.proiect_is.model.KnowledgeNote;
 import com.proiect.is.proiect_is.model.User;
 import com.proiect.is.proiect_is.repository.KnowledgeCategoryRepository;
+import com.proiect.is.proiect_is.repository.KnowledgeFolderRepository;
 import com.proiect.is.proiect_is.repository.KnowledgeRepository;
 import com.proiect.is.proiect_is.repository.UserRepository;
 import com.proiect.is.proiect_is.service.SystemRoleService;
@@ -23,18 +25,151 @@ public class KnowledgeController {
 
     private final KnowledgeRepository knowledgeRepository;
     private final KnowledgeCategoryRepository categoryRepository;
+    private final KnowledgeFolderRepository folderRepository;
     private final UserRepository userRepository;
     private final SystemRoleService systemRoleService;
 
     @Autowired
     public KnowledgeController(KnowledgeRepository knowledgeRepository,
                                KnowledgeCategoryRepository categoryRepository,
+                               KnowledgeFolderRepository folderRepository,
                                UserRepository userRepository,
                                SystemRoleService systemRoleService) {
         this.knowledgeRepository = knowledgeRepository;
         this.categoryRepository = categoryRepository;
+        this.folderRepository = folderRepository;
         this.userRepository = userRepository;
         this.systemRoleService = systemRoleService;
+    }
+
+    // --- FOLDERS: GET ALL ---
+    @GetMapping("/folders")
+    public ResponseEntity<List<KnowledgeFolder>> getFolders() {
+        return ResponseEntity.ok(folderRepository.findAllByOrderByNameAsc());
+    }
+
+    // --- FOLDERS: CREATE ---
+    @PostMapping("/folders")
+    public ResponseEntity<?> createFolder(@RequestBody Map<String, Object> body, @RequestParam Long userId) {
+        String name = (String) body.get("name");
+        if (name == null || name.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Numele folderului este obligatoriu!"));
+        }
+
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Utilizatorul nu a fost găsit!"));
+        }
+
+        Long parentId = null;
+        if (body.get("parentId") != null && !body.get("parentId").toString().isEmpty()) {
+            parentId = Long.valueOf(body.get("parentId").toString());
+        }
+
+        KnowledgeFolder folder = new KnowledgeFolder(name.trim(), parentId, user);
+        KnowledgeFolder saved = folderRepository.save(folder);
+        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    }
+
+    // --- FOLDERS: RENAME / UPDATE ---
+    @PutMapping("/folders/{id}")
+    public ResponseEntity<?> renameFolder(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        KnowledgeFolder folder = folderRepository.findById(id).orElse(null);
+        if (folder == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        if (body.containsKey("name")) {
+            String name = (String) body.get("name");
+            if (name != null && !name.trim().isEmpty()) {
+                folder.setName(name.trim());
+            }
+        }
+
+        if (body.containsKey("parentId")) {
+            Object pid = body.get("parentId");
+            Long targetParentId = (pid != null && !pid.toString().isEmpty()) ? Long.valueOf(pid.toString()) : null;
+            if (targetParentId != null) {
+                if (targetParentId.equals(id)) {
+                    return ResponseEntity.badRequest().body(Map.of("message", "Un folder nu poate fi mutat în el însuși!"));
+                }
+                if (isDescendantOf(targetParentId, id)) {
+                    return ResponseEntity.badRequest().body(Map.of("message", "Un folder nu poate fi mutat într-unul dintre subfolderele sale!"));
+                }
+                if (!folderRepository.existsById(targetParentId)) {
+                    return ResponseEntity.badRequest().body(Map.of("message", "Folderul destinație nu există!"));
+                }
+            }
+            folder.setParentId(targetParentId);
+        }
+
+        folder.setUpdatedAt(LocalDateTime.now());
+        KnowledgeFolder saved = folderRepository.save(folder);
+        return ResponseEntity.ok(saved);
+    }
+
+    // --- FOLDERS: MOVE TO ANOTHER FOLDER / ROOT ---
+    @PutMapping("/folders/{id}/move")
+    public ResponseEntity<?> moveFolder(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        KnowledgeFolder folder = folderRepository.findById(id).orElse(null);
+        if (folder == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Object pid = body.get("parentId");
+        Long targetParentId = (pid != null && !pid.toString().isEmpty()) ? Long.valueOf(pid.toString()) : null;
+
+        if (targetParentId != null) {
+            if (targetParentId.equals(id)) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Un folder nu poate fi mutat în el însuși!"));
+            }
+            if (isDescendantOf(targetParentId, id)) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Un folder nu poate fi mutat într-unul dintre subfolderele sale!"));
+            }
+            if (!folderRepository.existsById(targetParentId)) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Folderul destinație nu există!"));
+            }
+        }
+
+        folder.setParentId(targetParentId);
+        folder.setUpdatedAt(LocalDateTime.now());
+        KnowledgeFolder saved = folderRepository.save(folder);
+        return ResponseEntity.ok(saved);
+    }
+
+    private boolean isDescendantOf(Long candidateParentId, Long folderId) {
+        Long curr = candidateParentId;
+        while (curr != null) {
+            if (curr.equals(folderId)) {
+                return true;
+            }
+            KnowledgeFolder f = folderRepository.findById(curr).orElse(null);
+            if (f == null) break;
+            curr = f.getParentId();
+        }
+        return false;
+    }
+
+    // --- FOLDERS: DELETE (RECURSIVE) ---
+    @DeleteMapping("/folders/{id}")
+    public ResponseEntity<?> deleteFolder(@PathVariable Long id) {
+        KnowledgeFolder folder = folderRepository.findById(id).orElse(null);
+        if (folder == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        deleteFolderRecursive(id);
+        return ResponseEntity.ok(Map.of("message", "Folderul a fost șters cu succes!"));
+    }
+
+    private void deleteFolderRecursive(Long folderId) {
+        List<KnowledgeFolder> children = folderRepository.findByParentId(folderId);
+        for (KnowledgeFolder child : children) {
+            deleteFolderRecursive(child.getId());
+        }
+        List<KnowledgeNote> notes = knowledgeRepository.findByFolderId(folderId);
+        knowledgeRepository.deleteAll(notes);
+        folderRepository.deleteById(folderId);
     }
 
     // --- CATEGORIES: GET ALL ---
@@ -160,11 +295,25 @@ public class KnowledgeController {
 
     // --- CREATE KNOWLEDGE NOTE ---
     @PostMapping
-    public ResponseEntity<?> createNote(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<?> createNote(
+            @RequestParam(value = "userId", required = false) Long userIdParam,
+            @RequestBody Map<String, Object> body) {
         String title = (String) body.get("title");
         String content = (String) body.get("content");
         String category = body.get("category") != null ? (String) body.get("category") : "General";
-        Long creatorId = Long.valueOf(body.get("creatorId").toString());
+
+        Long creatorId = null;
+        if (body.get("creatorId") != null && !body.get("creatorId").toString().isEmpty()) {
+            creatorId = Long.valueOf(body.get("creatorId").toString());
+        } else if (body.get("userId") != null && !body.get("userId").toString().isEmpty()) {
+            creatorId = Long.valueOf(body.get("userId").toString());
+        } else if (userIdParam != null) {
+            creatorId = userIdParam;
+        }
+
+        if (creatorId == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Utilizatorul creator este obligatoriu!"));
+        }
         String youtubeUrl = (String) body.get("youtubeUrl");
         String imagesJson = (String) body.get("imagesJson");
         String allowedRolesToView = body.get("allowedRolesToView") != null ? (String) body.get("allowedRolesToView") : "ALL";
@@ -215,6 +364,11 @@ public class KnowledgeController {
         note.setAllowedUserIdsToView(allowedUserIdsToView != null ? allowedUserIdsToView.trim() : "");
         note.setAllowedRolesToEdit(allowedRolesToEdit != null && !allowedRolesToEdit.trim().isEmpty() ? allowedRolesToEdit.trim() : "ADMIN_CREATOR");
         note.setAllowedUserIdsToEdit(allowedUserIdsToEdit != null ? allowedUserIdsToEdit.trim() : "");
+        Long folderId = null;
+        if (body.get("folderId") != null && !body.get("folderId").toString().isEmpty()) {
+            folderId = Long.valueOf(body.get("folderId").toString());
+        }
+        note.setFolderId(folderId);
 
         KnowledgeNote saved = knowledgeRepository.save(note);
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
@@ -289,10 +443,37 @@ public class KnowledgeController {
         if (body.containsKey("isPinned")) {
             note.setPinned(Boolean.parseBoolean(body.get("isPinned").toString()));
         }
+        if (body.containsKey("folderId")) {
+            Object fid = body.get("folderId");
+            note.setFolderId(fid != null && !fid.toString().isEmpty() ? Long.valueOf(fid.toString()) : null);
+        }
 
         note.setUpdatedAt(LocalDateTime.now());
         KnowledgeNote updated = knowledgeRepository.save(note);
         return ResponseEntity.ok(updated);
+    }
+
+    // --- MOVE NOTE / ITEM TO ANOTHER FOLDER / ROOT ---
+    @PutMapping("/{id}/move")
+    public ResponseEntity<?> moveNote(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body) {
+        KnowledgeNote note = knowledgeRepository.findById(id).orElse(null);
+        if (note == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Object fid = body.get("folderId");
+        Long targetFolderId = (fid != null && !fid.toString().isEmpty()) ? Long.valueOf(fid.toString()) : null;
+
+        if (targetFolderId != null && !folderRepository.existsById(targetFolderId)) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Folderul destinație nu există!"));
+        }
+
+        note.setFolderId(targetFolderId);
+        note.setUpdatedAt(LocalDateTime.now());
+        KnowledgeNote saved = knowledgeRepository.save(note);
+        return ResponseEntity.ok(saved);
     }
 
     // --- DELETE KNOWLEDGE NOTE ---
@@ -324,17 +505,25 @@ public class KnowledgeController {
         return ResponseEntity.ok(Map.of("message", "Notița a fost ștearsă cu succes!"));
     }
 
-    // --- DOWNLOAD DRIVE FILE ---
+    // --- DOWNLOAD / OPEN DRIVE FILE OR LINK ---
     @GetMapping("/{id}/download")
     public ResponseEntity<?> downloadFile(@PathVariable Long id) {
         KnowledgeNote note = knowledgeRepository.findById(id).orElse(null);
-        if (note == null || note.getFileData() == null) {
+        if (note == null || note.getFileData() == null || note.getFileData().trim().isEmpty()) {
             return ResponseEntity.notFound().build();
         }
         try {
-            byte[] data = java.util.Base64.getDecoder().decode(note.getFileData());
-            String fileName = note.getFileName() != null ? note.getFileName() : "document";
-            String contentType = note.getFileType() != null ? note.getFileType() : "application/octet-stream";
+            String dataStr = note.getFileData().trim();
+            // Dacă resursa este un link extern (Google Docs, Sheets, PDF online), redirecționăm
+            if (dataStr.startsWith("http://") || dataStr.startsWith("https://")) {
+                return ResponseEntity.status(HttpStatus.FOUND)
+                        .location(java.net.URI.create(dataStr))
+                        .build();
+            }
+
+            byte[] data = java.util.Base64.getDecoder().decode(dataStr);
+            String fileName = note.getFileName() != null ? note.getFileName() : "document.pdf";
+            String contentType = note.getFileType() != null ? note.getFileType() : "application/pdf";
             return ResponseEntity.ok()
                     .header("Content-Disposition", "attachment; filename=\"" + fileName + "\"")
                     .header("Content-Type", contentType)

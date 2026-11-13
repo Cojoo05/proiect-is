@@ -57,6 +57,9 @@ public class KnowledgeNote {
     @Column(columnDefinition = "TEXT")
     private String fileData;
 
+    @Column(name = "folder_id")
+    private Long folderId;
+
     @Column(nullable = false, length = 500)
     private String allowedRolesToView = "ALL"; // "ALL" or comma-separated role names e.g. "Admin,Developer"
 
@@ -197,4 +200,7 @@ public class KnowledgeNote {
 
     public String getFileData() { return fileData; }
     public void setFileData(String fileData) { this.fileData = fileData; }
+
+    public Long getFolderId() { return folderId; }
+    public void setFolderId(Long folderId) { this.folderId = folderId; }
 }

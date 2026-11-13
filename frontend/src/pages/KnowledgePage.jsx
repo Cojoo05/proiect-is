@@ -16,21 +16,103 @@ function extractYouTubeId(text) {
   return null;
 }
 
-function getFileMeta(fileName, fileType) {
-  const name = (fileName || '').toLowerCase();
-  if (name.endsWith('.doc') || name.endsWith('.docx') || (fileType && fileType.includes('word'))) {
-    return { icon: '📄', label: 'Word', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe' };
+// Inspect item or URL to detect Google Docs, Google Sheets, PDF or Drive links
+function getDriveItemMeta(itemOrUrl, rawFileName, rawFileType) {
+  const url = typeof itemOrUrl === 'string'
+    ? itemOrUrl
+    : (itemOrUrl?.fileData || itemOrUrl?.content || '');
+  const lowerUrl = (url || '').trim().toLowerCase();
+  const name = (typeof itemOrUrl === 'object' ? itemOrUrl?.fileName : rawFileName) || '';
+  const lowerName = name.toLowerCase();
+  const fType = ((typeof itemOrUrl === 'object' ? itemOrUrl?.fileType : rawFileType) || '').toLowerCase();
+
+  // Google Docs
+  if (lowerUrl.includes('docs.google.com/document') || fType === 'google_docs') {
+    return {
+      icon: '📄',
+      label: 'Google Docs',
+      type: 'GOOGLE_DOCS',
+      color: '#2563eb',
+      bg: '#eff6ff',
+      border: '#bfdbfe',
+      actionText: 'Deschide Docs',
+      isLink: true,
+      url: url,
+    };
   }
-  if (name.endsWith('.xls') || name.endsWith('.xlsx') || (fileType && (fileType.includes('excel') || fileType.includes('spreadsheet')))) {
-    return { icon: '📊', label: 'Excel', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' };
+
+  // Google Sheets / Spreadsheet
+  if (lowerUrl.includes('docs.google.com/spreadsheets') || lowerUrl.includes('spreadsheet') || fType === 'google_sheets') {
+    return {
+      icon: '📊',
+      label: 'Spreadsheet',
+      type: 'GOOGLE_SHEETS',
+      color: '#16a34a',
+      bg: '#f0fdf4',
+      border: '#bbf7d0',
+      actionText: 'Deschide Sheets',
+      isLink: true,
+      url: url,
+    };
   }
-  if (name.endsWith('.pdf') || (fileType && fileType.includes('pdf'))) {
-    return { icon: '📑', label: 'PDF', color: '#dc2626', bg: '#fef2f2', border: '#fecaca' };
+
+  // PDF (Link or Uploaded file)
+  if (lowerName.endsWith('.pdf') || lowerUrl.endsWith('.pdf') || lowerUrl.includes('/pdf') || fType.includes('pdf')) {
+    const isLink = lowerUrl.startsWith('http://') || lowerUrl.startsWith('https://');
+    return {
+      icon: '📑',
+      label: 'PDF Document',
+      type: 'PDF',
+      color: '#dc2626',
+      bg: '#fef2f2',
+      border: '#fecaca',
+      actionText: isLink ? 'Deschide PDF' : 'Vizualizează PDF',
+      isLink: isLink,
+      url: isLink ? url : null,
+    };
   }
-  if (name.endsWith('.ppt') || name.endsWith('.pptx')) {
-    return { icon: '📊', label: 'PowerPoint', color: '#ea580c', bg: '#fff7ed', border: '#fed7aa' };
+
+  // Google Drive generic folder / file
+  if (lowerUrl.includes('drive.google.com')) {
+    return {
+      icon: '📁',
+      label: 'Google Drive',
+      type: 'GOOGLE_DRIVE',
+      color: '#0284c7',
+      bg: '#f0f9ff',
+      border: '#bae6fd',
+      actionText: 'Deschide în Drive',
+      isLink: true,
+      url: url,
+    };
   }
-  return { icon: '📁', label: 'Document', color: '#475569', bg: '#f8fafc', border: '#e2e8f0' };
+
+  // Any other web link
+  if (lowerUrl.startsWith('http://') || lowerUrl.startsWith('https://')) {
+    return {
+      icon: '🔗',
+      label: 'Document Web',
+      type: 'WEB_LINK',
+      color: '#475569',
+      bg: '#f8fafc',
+      border: '#e2e8f0',
+      actionText: 'Deschide Link',
+      isLink: true,
+      url: url,
+    };
+  }
+
+  return {
+    icon: '📁',
+    label: 'Document',
+    type: 'DOCUMENT',
+    color: '#475569',
+    bg: '#f8fafc',
+    border: '#e2e8f0',
+    actionText: 'Descarcă',
+    isLink: false,
+    url: null,
+  };
 }
 
 function formatBytes(bytes) {
@@ -43,12 +125,16 @@ function formatBytes(bytes) {
 
 export default function KnowledgePage({ currentUser }) {
   const [items, setItems] = useState([]);
+  const [folders, setFolders] = useState([]);
+  const [currentFolderId, setCurrentFolderId] = useState(null); // null = Root
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('ALL'); // 'ALL' | 'DRIVE' | 'NOTE'
   const [search, setSearch] = useState('');
 
   // Modals
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
+  const [renamingFolder, setRenamingFolder] = useState(null);
+  const [folderNameInput, setFolderNameInput] = useState('');
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
   const [viewingItem, setViewingItem] = useState(null);
@@ -61,7 +147,9 @@ export default function KnowledgePage({ currentUser }) {
   const [noteSaving, setNoteSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
-  // Drive Form
+  // Drive Form: 'LINK' vs 'FILE'
+  const [driveMode, setDriveMode] = useState('LINK'); // 'LINK' | 'FILE'
+  const [driveUrl, setDriveUrl] = useState('');
   const [driveTitle, setDriveTitle] = useState('');
   const [driveFile, setDriveFile] = useState(null); // { name, type, size, base64 }
   const [driveSaving, setDriveSaving] = useState(false);
@@ -69,26 +157,35 @@ export default function KnowledgePage({ currentUser }) {
   const fileInputRef = useRef(null);
   const addMenuRef = useRef(null);
 
+  // Drag and Drop States
+  const [draggedElement, setDraggedElement] = useState(null); // { type: 'FOLDER' | 'ITEM', id, name, parentId?, folderId? }
+  const [activeDropTargetId, setActiveDropTargetId] = useState(null); // folderId or 'ROOT'
+  const [toast, setToast] = useState(null); // { text, type: 'success' | 'error' | 'info' }
+  const toastTimerRef = useRef(null);
+  const dropOccurredAtRef = useRef(0);
+
   const API = `${API_BASE_URL}/api/knowledge`;
 
-  // Fetch all items
-  const fetchItems = () => {
-    setLoading(true);
+  // Fetch all items and folders
+  const fetchData = async (silent = false) => {
+    if (!silent) setLoading(true);
     const userIdParam = currentUser?.id ? `?userId=${currentUser.id}` : '';
-    fetch(`${API}${userIdParam}`)
-      .then(r => r.ok ? r.json() : [])
-      .then(data => {
-        setItems(Array.isArray(data) ? data : []);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('Eroare la încărcarea Knowledge:', err);
-        setLoading(false);
-      });
+    try {
+      const [itemsRes, foldersRes] = await Promise.all([
+        fetch(`${API}${userIdParam}`).then(r => r.ok ? r.json() : []),
+        fetch(`${API}/folders`).then(r => r.ok ? r.json() : []),
+      ]);
+      setItems(Array.isArray(itemsRes) ? itemsRes : []);
+      setFolders(Array.isArray(foldersRes) ? foldersRes : []);
+    } catch (err) {
+      console.error('Eroare la încărcarea Knowledge:', err);
+    } finally {
+      if (!silent) setLoading(false);
+    }
   };
 
   useEffect(() => {
-    fetchItems();
+    fetchData();
   }, [currentUser?.id]);
 
   // Click outside add menu
@@ -102,10 +199,317 @@ export default function KnowledgePage({ currentUser }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Compute breadcrumbs path from currentFolderId
+  const breadcrumbs = useMemo(() => {
+    if (currentFolderId == null) return [];
+    const path = [];
+    let curr = folders.find(f => Number(f.id) === Number(currentFolderId));
+    while (curr) {
+      path.unshift(curr);
+      curr = curr.parentId != null ? folders.find(f => Number(f.id) === Number(curr.parentId)) : null;
+    }
+    return path;
+  }, [currentFolderId, folders]);
+
+  const currentFolder = useMemo(() => {
+    if (currentFolderId == null) return null;
+    return folders.find(f => Number(f.id) === Number(currentFolderId)) || null;
+  }, [currentFolderId, folders]);
+
+  // Folders at current level
+  const displayedFolders = useMemo(() => {
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      return folders.filter(f => (f.name || '').toLowerCase().includes(q));
+    }
+    return folders.filter(f => {
+      if (currentFolderId != null) {
+        return f.parentId != null && Number(f.parentId) === Number(currentFolderId);
+      }
+      return f.parentId == null;
+    });
+  }, [folders, currentFolderId, search]);
+
+  // Items at current level (or all matching search)
+  const displayedItems = useMemo(() => {
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      return items.filter(it => {
+        const inTitle = (it.title || '').toLowerCase().includes(q);
+        const inContent = (it.content || '').toLowerCase().includes(q);
+        const inFile = (it.fileName || '').toLowerCase().includes(q);
+        return inTitle || inContent || inFile;
+      });
+    }
+    return items.filter(it => {
+      if (currentFolderId != null) {
+        return it.folderId != null && Number(it.folderId) === Number(currentFolderId);
+      }
+      return it.folderId == null;
+    });
+  }, [items, currentFolderId, search]);
+
+  // Helper to count items inside folder
+  const getFolderCounts = (folderId) => {
+    const subCount = folders.filter(f => f.parentId != null && Number(f.parentId) === Number(folderId)).length;
+    const itCount = items.filter(it => it.folderId != null && Number(it.folderId) === Number(folderId)).length;
+    return { subCount, itCount, total: subCount + itCount };
+  };
+
   // Live detected YouTube ID from note content
   const detectedYouTubeId = useMemo(() => {
     return extractYouTubeId(noteContent);
   }, [noteContent]);
+
+  // Live detected Drive metadata from entered URL in Drive Modal
+  const liveDriveMeta = useMemo(() => {
+    if (!driveUrl.trim()) return null;
+    return getDriveItemMeta(driveUrl.trim(), '', '');
+  }, [driveUrl]);
+
+  // Toast feedback
+  const showToast = (text, type = 'success') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ text, type });
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null);
+    }, 3200);
+  };
+
+  // Helper: check if targetFolder is a descendant of candidateAncestor
+  const isDescendantFolder = (targetFolderId, candidateAncestorId) => {
+    if (targetFolderId == null || candidateAncestorId == null) return false;
+    if (Number(targetFolderId) === Number(candidateAncestorId)) return true;
+    let curr = folders.find(f => Number(f.id) === Number(targetFolderId));
+    while (curr && curr.parentId != null) {
+      if (Number(curr.parentId) === Number(candidateAncestorId)) return true;
+      curr = folders.find(f => Number(f.id) === Number(curr.parentId));
+    }
+    return false;
+  };
+
+  // Drag & Drop Handlers
+  const handleDragStart = (e, elementInfo) => {
+    setDraggedElement(elementInfo);
+    try {
+      e.dataTransfer.setData('text/plain', JSON.stringify(elementInfo));
+      e.dataTransfer.effectAllowed = 'move';
+    } catch (_) {}
+  };
+
+  const handleDragEnd = () => {
+    setDraggedElement(null);
+    setActiveDropTargetId(null);
+  };
+
+  const handleDragOverTarget = (e, targetId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggedElement) return;
+
+    const actualTargetId = targetId === 'ROOT' ? null : (targetId != null ? Number(targetId) : null);
+
+    if (draggedElement.type === 'FOLDER') {
+      const draggedId = Number(draggedElement.id);
+      if (actualTargetId != null && draggedId === actualTargetId) return;
+      if (actualTargetId != null && isDescendantFolder(actualTargetId, draggedId)) return;
+      const draggedParentId = draggedElement.parentId != null ? Number(draggedElement.parentId) : null;
+      if (draggedParentId === actualTargetId) return;
+    } else if (draggedElement.type === 'ITEM') {
+      const draggedFolderId = draggedElement.folderId != null ? Number(draggedElement.folderId) : null;
+      if (draggedFolderId === actualTargetId) return;
+    }
+
+    e.dataTransfer.dropEffect = 'move';
+    if (activeDropTargetId !== targetId) {
+      setActiveDropTargetId(targetId);
+    }
+  };
+
+  const handleDragLeaveTarget = (e, targetId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget.contains(e.relatedTarget)) {
+      return;
+    }
+    if (activeDropTargetId === targetId) {
+      setActiveDropTargetId(null);
+    }
+  };
+
+  const handleDropOnTarget = async (e, targetFolderId, targetFolderName) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropOccurredAtRef.current = Date.now();
+    setActiveDropTargetId(null);
+
+    const actualTargetId = targetFolderId === 'ROOT' ? null : (targetFolderId != null ? Number(targetFolderId) : null);
+    let element = draggedElement;
+    if (!element) {
+      try {
+        const raw = e.dataTransfer.getData('text/plain');
+        if (raw) element = JSON.parse(raw);
+      } catch (_) {}
+    }
+    setDraggedElement(null);
+    if (!element) return;
+
+    const elId = Number(element.id);
+
+    // 1. Move Item (Docs, Sheets, PDF, Notes)
+    if (element.type === 'ITEM') {
+      const curFolderId = element.folderId != null ? Number(element.folderId) : null;
+      if (curFolderId === actualTargetId) {
+        showToast(`Elementul este deja în "${targetFolderName}"`, 'info');
+        return;
+      }
+
+      setItems(prev => prev.map(it => Number(it.id) === elId ? { ...it, folderId: actualTargetId } : it));
+
+      try {
+        const res = await fetch(`${API}/${elId}/move`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folderId: actualTargetId }),
+        });
+
+        if (res.ok) {
+          showToast(`"${element.name}" a fost mutat în "${targetFolderName}"!`, 'success');
+          fetchData(true);
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          showToast(errData.message || 'Eroare la mutarea elementului!', 'error');
+          fetchData(true);
+        }
+      } catch (err) {
+        console.error(err);
+        showToast('Eroare de conexiune la mutare!', 'error');
+        fetchData(true);
+      }
+    }
+
+    // 2. Move Folder
+    if (element.type === 'FOLDER') {
+      if (actualTargetId != null && elId === actualTargetId) {
+        showToast('Nu poți muta un folder în el însuși!', 'error');
+        return;
+      }
+      const curParentId = element.parentId != null ? Number(element.parentId) : null;
+      if (curParentId === actualTargetId) {
+        showToast(`Folderul este deja în "${targetFolderName}"`, 'info');
+        return;
+      }
+      if (actualTargetId != null && isDescendantFolder(actualTargetId, elId)) {
+        showToast('Nu poți muta un folder într-unul dintre subfolderele sale!', 'error');
+        return;
+      }
+
+      setFolders(prev => prev.map(f => Number(f.id) === elId ? { ...f, parentId: actualTargetId } : f));
+
+      try {
+        const res = await fetch(`${API}/folders/${elId}/move`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ parentId: actualTargetId }),
+        });
+
+        if (res.ok) {
+          showToast(`Folderul "${element.name}" a fost mutat în "${targetFolderName}"!`, 'success');
+          fetchData(true);
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          showToast(errData.message || 'Eroare la mutarea folderului!', 'error');
+          fetchData(true);
+        }
+      } catch (err) {
+        console.error(err);
+        showToast('Eroare de conexiune la mutare!', 'error');
+        fetchData(true);
+      }
+    }
+  };
+
+  // Create Folder
+  const handleCreateFolder = async (e) => {
+    e.preventDefault();
+    if (!folderNameInput.trim()) return;
+
+    try {
+      const res = await fetch(`${API}/folders?userId=${currentUser?.id || 32}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: folderNameInput.trim(),
+          parentId: currentFolderId,
+        }),
+      });
+
+      if (res.ok) {
+        setIsFolderModalOpen(false);
+        setFolderNameInput('');
+        fetchData(true);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || 'Eroare la crearea folderului!');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Eroare de conexiune la crearea folderului!');
+    }
+  };
+
+  // Rename Folder
+  const handleRenameFolder = async (e) => {
+    e.preventDefault();
+    if (!renamingFolder || !folderNameInput.trim()) return;
+
+    try {
+      const res = await fetch(`${API}/folders/${renamingFolder.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: folderNameInput.trim() }),
+      });
+
+      if (res.ok) {
+        setRenamingFolder(null);
+        setFolderNameInput('');
+        fetchData(true);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || 'Eroare la redenumire!');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Eroare de conexiune!');
+    }
+  };
+
+  // Delete Folder (recursive)
+  const handleDeleteFolder = async (folder, e) => {
+    if (e) e.stopPropagation();
+    const counts = getFolderCounts(folder.id);
+    const warning = counts.total > 0
+      ? `Ești sigur că vrei să ștergi folderul "${folder.name}"? Acesta conține ${counts.subCount} subfoldere și ${counts.itCount} documente/notițe care vor fi șterse de asemenea.`
+      : `Ești sigur că vrei să ștergi folderul "${folder.name}"?`;
+
+    if (!window.confirm(warning)) return;
+
+    try {
+      const res = await fetch(`${API}/folders/${folder.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        if (currentFolderId === folder.id) {
+          setCurrentFolderId(folder.parentId || null);
+        }
+        fetchData(true);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || 'Eroare la ștergerea folderului!');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Eroare de conexiune!');
+    }
+  };
 
   // Handle image upload for note
   const handleNoteImageSelect = (e) => {
@@ -140,7 +544,8 @@ export default function KnowledgePage({ currentUser }) {
         youtubeUrl: ytId ? `https://www.youtube.com/watch?v=${ytId}` : null,
         imagesJson: noteImages.length > 0 ? JSON.stringify(noteImages) : null,
         creatorId: currentUser?.id,
-        category: 'Notițe'
+        category: 'Notițe',
+        folderId: currentFolderId,
       };
 
       const url = editingId ? `${API}/${editingId}?userId=${currentUser?.id}` : API;
@@ -149,7 +554,7 @@ export default function KnowledgePage({ currentUser }) {
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
@@ -158,7 +563,7 @@ export default function KnowledgePage({ currentUser }) {
         setNoteContent('');
         setNoteImages([]);
         setEditingId(null);
-        fetchItems();
+        fetchData(true);
       } else {
         const data = await res.json().catch(() => ({}));
         alert(data.message || 'Eroare la salvarea notiței!');
@@ -171,7 +576,7 @@ export default function KnowledgePage({ currentUser }) {
     }
   };
 
-  // Handle Drive File Select
+  // Handle Drive File Select (PDF upload)
   const handleDriveFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -181,80 +586,150 @@ export default function KnowledgePage({ currentUser }) {
       const base64Data = ev.target.result.split(',')[1] || '';
       setDriveFile({
         name: file.name,
-        type: file.type || 'application/octet-stream',
+        type: file.type || 'application/pdf',
         size: file.size,
-        base64: base64Data
+        base64: base64Data,
       });
       if (!driveTitle) {
-        setDriveTitle(file.name);
+        setDriveTitle(file.name.replace(/\.[^/.]+$/, ''));
       }
     };
     reader.readAsDataURL(file);
   };
 
-  // Submit Drive File
+  // Submit Drive Resource (Docs link, Spreadsheet link, or PDF)
   const handleSaveDrive = async (e) => {
     e.preventDefault();
-    if (!driveFile || !driveTitle.trim()) return;
+    if (!driveTitle.trim()) return;
+
+    if (driveMode === 'LINK' && !driveUrl.trim()) {
+      alert('Te rugăm să introduci link-ul documentului (Docs, Sheets sau PDF)!');
+      return;
+    }
+
+    if (driveMode === 'FILE' && !driveFile) {
+      alert('Te rugăm să selectezi un fișier PDF!');
+      return;
+    }
 
     setDriveSaving(true);
     try {
-      const payload = {
-        title: driveTitle.trim(),
-        content: `Document Drive: ${driveFile.name}`,
-        itemType: 'DRIVE',
-        fileName: driveFile.name,
-        fileType: driveFile.type,
-        fileSize: driveFile.size,
-        fileData: driveFile.base64,
-        creatorId: currentUser?.id,
-        category: 'Drive'
-      };
+      let payload;
+
+      if (driveMode === 'LINK') {
+        const meta = getDriveItemMeta(driveUrl.trim(), driveTitle, '');
+        payload = {
+          title: driveTitle.trim(),
+          content: driveUrl.trim(),
+          itemType: 'DRIVE',
+          fileName: meta.label,
+          fileType: meta.type,
+          fileSize: null,
+          fileData: driveUrl.trim(),
+          creatorId: currentUser?.id,
+          category: 'Drive',
+          folderId: currentFolderId,
+        };
+      } else {
+        payload = {
+          title: driveTitle.trim(),
+          content: `Document PDF: ${driveFile.name}`,
+          itemType: 'DRIVE',
+          fileName: driveFile.name,
+          fileType: driveFile.type || 'application/pdf',
+          fileSize: driveFile.size,
+          fileData: driveFile.base64,
+          creatorId: currentUser?.id,
+          category: 'Drive',
+          folderId: currentFolderId,
+        };
+      }
 
       const res = await fetch(API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
         setIsDriveModalOpen(false);
         setDriveTitle('');
+        setDriveUrl('');
         setDriveFile(null);
-        fetchItems();
+        fetchData(true);
       } else {
         const data = await res.json().catch(() => ({}));
-        alert(data.message || 'Eroare la încărcarea fișierului!');
+        alert(data.message || 'Eroare la salvarea resursei Drive!');
       }
     } catch (err) {
       console.error(err);
-      alert('Eroare de conexiune la încărcarea fișierului!');
+      alert('Eroare de conexiune la salvare!');
     } finally {
       setDriveSaving(false);
     }
   };
 
-  // Direct download
-  const handleDownload = (item) => {
-    if (item.fileData) {
-      const byteCharacters = atob(item.fileData);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: item.fileType || 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = item.fileName || item.title || 'document';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } else {
-      window.open(`${API}/${item.id}/download`, '_blank');
+  // Open Drive resource (Link or PDF)
+  const handleOpenDriveItem = (item, e) => {
+    if (e) e.stopPropagation();
+    const meta = getDriveItemMeta(item);
+
+    // If it's a web link (Google Docs, Google Sheets, PDF link)
+    if (meta.isLink && meta.url) {
+      window.open(meta.url, '_blank', 'noopener,noreferrer');
+      return;
     }
+
+    // If it's an uploaded PDF with base64 data
+    if (item.fileData) {
+      if (item.fileData.startsWith('http://') || item.fileData.startsWith('https://')) {
+        window.open(item.fileData, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      try {
+        const byteCharacters = atob(item.fileData);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: item.fileType || 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        return;
+      } catch (err) {
+        console.error('Error opening blob:', err);
+      }
+    }
+
+    // Fallback to download endpoint
+    window.open(`${API}/${item.id}/download`, '_blank');
+  };
+
+  // Direct download for uploaded files
+  const handleDownloadFile = (item, e) => {
+    if (e) e.stopPropagation();
+    if (item.fileData && !item.fileData.startsWith('http')) {
+      try {
+        const byteCharacters = atob(item.fileData);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: item.fileType || 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = item.fileName || item.title || 'document.pdf';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        return;
+      } catch (_) {}
+    }
+    window.open(`${API}/${item.id}/download`, '_blank');
   };
 
   // Delete item
@@ -264,7 +739,7 @@ export default function KnowledgePage({ currentUser }) {
 
     try {
       const res = await fetch(`${API}/${item.id}?userId=${currentUser?.id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
       });
       if (res.ok) {
         if (viewingItem?.id === item.id) setViewingItem(null);
@@ -291,35 +766,17 @@ export default function KnowledgePage({ currentUser }) {
     setIsNoteModalOpen(true);
   };
 
-  // Filter items
-  const filteredItems = useMemo(() => {
-    return items.filter(it => {
-      const isDrive = it.itemType === 'DRIVE';
-      if (activeTab === 'DRIVE' && !isDrive) return false;
-      if (activeTab === 'NOTE' && isDrive) return false;
-      if (search.trim()) {
-        const q = search.toLowerCase();
-        const matchesTitle = it.title?.toLowerCase().includes(q);
-        const matchesContent = it.content?.toLowerCase().includes(q);
-        const matchesFile = it.fileName?.toLowerCase().includes(q);
-        if (!matchesTitle && !matchesContent && !matchesFile) return false;
-      }
-      return true;
-    });
-  }, [items, activeTab, search]);
-
-  const counts = useMemo(() => {
-    return {
-      all: items.length,
-      drive: items.filter(i => i.itemType === 'DRIVE').length,
-      note: items.filter(i => i.itemType !== 'DRIVE').length
-    };
-  }, [items]);
-
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px', fontFamily: 'sans-serif', textAlign: 'left' }}>
-      
-      {/* ── Top Header Bar ─────────────────────────────────────────── */}
+    <div
+      style={{
+        minHeight: 'calc(100vh - 60px)',
+        backgroundColor: '#f8fafc',
+        padding: '28px 32px 60px',
+        textAlign: 'left',
+        fontFamily: 'Inter, system-ui, sans-serif',
+      }}
+    >
+      {/* ── Top Header ────────────────────────────────────────────── */}
       <div
         style={{
           display: 'flex',
@@ -327,27 +784,38 @@ export default function KnowledgePage({ currentUser }) {
           alignItems: 'center',
           flexWrap: 'wrap',
           gap: '16px',
-          marginBottom: '24px',
+          marginBottom: '20px',
         }}
       >
         <div>
-          <h1 style={{ margin: 0, fontSize: '1.75rem', color: '#1e293b', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>🧠</span> Knowledge App
-          </h1>
-          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '14px' }}>
-            Documente Drive (Word, Excel) și notițe bogate cu suport YouTube și poze.
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '30px' }}>📚</span>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: '1.75rem',
+                fontWeight: '800',
+                color: '#1e293b',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              Knowledge App
+            </h1>
+          </div>
+          <p style={{ margin: '4px 0 0 40px', fontSize: '13px', color: '#64748b' }}>
+            Organizează documentele Google Docs, Sheets, PDF și notițele tale în foldere ierarhice
           </p>
         </div>
 
-        {/* ➕ Adaugă Menu */}
-        <div ref={addMenuRef} style={{ position: 'relative' }}>
+        {/* Action Button: Add dropdown */}
+        <div style={{ position: 'relative' }} ref={addMenuRef}>
           <button
             onClick={() => setShowAddMenu(prev => !prev)}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '8px',
-              padding: '10px 20px',
+              padding: '10px 18px',
               backgroundColor: '#5a3d5c',
               color: '#ffffff',
               border: 'none',
@@ -355,14 +823,13 @@ export default function KnowledgePage({ currentUser }) {
               fontSize: '14px',
               fontWeight: '700',
               cursor: 'pointer',
-              boxShadow: '0 2px 6px rgba(90, 61, 92, 0.3)',
-              transition: 'all 0.15s ease',
+              boxShadow: '0 2px 8px rgba(90, 61, 92, 0.25)',
+              transition: 'background-color 0.15s ease, transform 0.1s ease',
             }}
-            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#472f49')}
+            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#472f48')}
             onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#5a3d5c')}
           >
-            <span>➕</span>
-            <span>Adaugă</span>
+            <span>➕ Adaugă</span>
             <span style={{ fontSize: '11px' }}>▼</span>
           </button>
 
@@ -370,9 +837,9 @@ export default function KnowledgePage({ currentUser }) {
             <div
               style={{
                 position: 'absolute',
-                top: '110%',
+                top: 'calc(100% + 6px)',
                 right: 0,
-                width: '240px',
+                width: '270px',
                 backgroundColor: '#ffffff',
                 borderRadius: '10px',
                 boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
@@ -382,9 +849,50 @@ export default function KnowledgePage({ currentUser }) {
                 animation: 'fadeIn 0.15s ease',
               }}
             >
+              {/* Folder Nou */}
               <button
                 onClick={() => {
                   setShowAddMenu(false);
+                  setFolderNameInput('');
+                  setIsFolderModalOpen(true);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  width: '100%',
+                  padding: '10px 16px',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  color: '#1e293b',
+                  transition: 'background-color 0.12s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                <span style={{ fontSize: '20px' }}>📁</span>
+                <div>
+                  <div>Folder Nou</div>
+                  <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '400' }}>
+                    {currentFolder ? `În "${currentFolder.name}"` : 'În Rădăcină'}
+                  </div>
+                </div>
+              </button>
+
+              <div style={{ height: '1px', backgroundColor: '#f1f5f9', margin: '4px 0' }} />
+
+              {/* Docs / Sheets / PDF */}
+              <button
+                onClick={() => {
+                  setShowAddMenu(false);
+                  setDriveMode('LINK');
+                  setDriveUrl('');
+                  setDriveTitle('');
+                  setDriveFile(null);
                   setIsDriveModalOpen(true);
                 }}
                 style={{
@@ -405,13 +913,16 @@ export default function KnowledgePage({ currentUser }) {
                 onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
                 onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
               >
-                <span style={{ fontSize: '18px' }}>📁</span>
+                <span style={{ fontSize: '20px' }}>📄</span>
                 <div>
-                  <div>Încarcă fișier Drive</div>
-                  <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '400' }}>Word, Excel, PDF etc.</div>
+                  <div>Adaugă Docs, Sheets sau PDF</div>
+                  <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '400' }}>
+                    Link Docs/Spreadsheet sau fișier PDF
+                  </div>
                 </div>
               </button>
 
+              {/* Notiță */}
               <button
                 onClick={() => {
                   setShowAddMenu(false);
@@ -439,10 +950,12 @@ export default function KnowledgePage({ currentUser }) {
                 onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
                 onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
               >
-                <span style={{ fontSize: '18px' }}>📝</span>
+                <span style={{ fontSize: '20px' }}>📝</span>
                 <div>
                   <div>Creează Notiță</div>
-                  <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '400' }}>Text, YouTube & poze</div>
+                  <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '400' }}>
+                    Text, YouTube video & poze
+                  </div>
                 </div>
               </button>
             </div>
@@ -450,7 +963,7 @@ export default function KnowledgePage({ currentUser }) {
         </div>
       </div>
 
-      {/* ── Filters & Search Bar ───────────────────────────────────── */}
+      {/* ── Breadcrumb Navigation & Search Bar ─────────────────────── */}
       <div
         style={{
           display: 'flex',
@@ -465,42 +978,130 @@ export default function KnowledgePage({ currentUser }) {
           border: '1px solid #e2e8f0',
         }}
       >
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: '6px' }}>
-          {[
-            { key: 'ALL', label: `Toate (${counts.all})` },
-            { key: 'DRIVE', label: `📁 Drive (${counts.drive})` },
-            { key: 'NOTE', label: `📝 Notițe (${counts.note})` },
-          ].map(tab => {
-            const active = activeTab === tab.key;
+        {/* Breadcrumb Trail */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          {currentFolderId && (() => {
+            const backTargetId = currentFolder?.parentId || 'ROOT';
+            const backTargetName = currentFolder?.parentId
+              ? (folders.find(f => f.id === currentFolder.parentId)?.name || 'Folder părinte')
+              : 'Rădăcină';
+            const isBackDropTarget = activeDropTargetId === backTargetId;
+
             return (
               <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => setCurrentFolderId(currentFolder?.parentId || null)}
+                onDragOver={(e) => handleDragOverTarget(e, backTargetId)}
+                onDragLeave={(e) => handleDragLeaveTarget(e, backTargetId)}
+                onDrop={(e) => handleDropOnTarget(e, backTargetId, backTargetName)}
+                title={draggedElement ? `Plasează aici pentru a muta în "${backTargetName}"` : 'Mergi înapoi'}
                 style={{
-                  padding: '7px 14px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '6px 12px',
                   borderRadius: '6px',
-                  border: '1px solid',
-                  borderColor: active ? '#5a3d5c' : 'transparent',
-                  backgroundColor: active ? '#f3e8ff' : '#f8fafc',
-                  color: active ? '#5a3d5c' : '#64748b',
-                  fontSize: '13px',
-                  fontWeight: active ? '700' : '500',
+                  border: isBackDropTarget ? '2px dashed #7c3aed' : '1px solid #cbd5e1',
+                  backgroundColor: isBackDropTarget ? '#f3e8ff' : '#f8fafc',
+                  color: isBackDropTarget ? '#7c3aed' : '#334155',
+                  fontSize: '12px',
+                  fontWeight: '600',
                   cursor: 'pointer',
+                  marginRight: '6px',
+                  transform: isBackDropTarget ? 'scale(1.06)' : 'none',
                   transition: 'all 0.12s',
                 }}
               >
-                {tab.label}
+                <span>←</span>
+                <span>{isBackDropTarget ? `Mută în "${backTargetName}"` : 'Înapoi'}</span>
               </button>
+            );
+          })()}
+
+          {(() => {
+            const isRootDropTarget = activeDropTargetId === 'ROOT';
+            return (
+              <button
+                onClick={() => {
+                  setCurrentFolderId(null);
+                  setSearch('');
+                }}
+                onDragOver={(e) => handleDragOverTarget(e, 'ROOT')}
+                onDragLeave={(e) => handleDragLeaveTarget(e, 'ROOT')}
+                onDrop={(e) => handleDropOnTarget(e, 'ROOT', 'Rădăcină')}
+                title={draggedElement ? 'Plasează aici pentru a muta în Rădăcină' : 'Mergi la Rădăcină'}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '5px 10px',
+                  borderRadius: '6px',
+                  border: isRootDropTarget ? '2px dashed #7c3aed' : 'none',
+                  backgroundColor: isRootDropTarget ? '#f3e8ff' : (currentFolderId === null ? '#f3e8ff' : 'transparent'),
+                  color: isRootDropTarget ? '#7c3aed' : (currentFolderId === null ? '#5a3d5c' : '#64748b'),
+                  fontSize: '13px',
+                  fontWeight: (currentFolderId === null || isRootDropTarget) ? '700' : '500',
+                  cursor: 'pointer',
+                  transform: isRootDropTarget ? 'scale(1.08)' : 'none',
+                  boxShadow: isRootDropTarget ? '0 0 10px rgba(124, 58, 237, 0.25)' : 'none',
+                  transition: 'all 0.12s',
+                }}
+              >
+                <span>🏠</span>
+                <span>{isRootDropTarget ? 'Mută în Rădăcină' : 'Rădăcină'}</span>
+              </button>
+            );
+          })()}
+
+          {breadcrumbs.map((b, idx) => {
+            const isLast = idx === breadcrumbs.length - 1;
+            const isBreadcrumbDropTarget = activeDropTargetId === b.id;
+
+            return (
+              <span key={b.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: '#cbd5e1', fontSize: '13px' }}>/</span>
+                <button
+                  onClick={() => {
+                    setCurrentFolderId(b.id);
+                    setSearch('');
+                  }}
+                  onDragOver={(e) => !isLast && handleDragOverTarget(e, b.id)}
+                  onDragLeave={(e) => !isLast && handleDragLeaveTarget(e, b.id)}
+                  onDrop={(e) => !isLast && handleDropOnTarget(e, b.id, b.name)}
+                  title={!isLast && draggedElement ? `Plasează aici pentru a muta în "${b.name}"` : undefined}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '5px 10px',
+                    borderRadius: '6px',
+                    border: isBreadcrumbDropTarget ? '2px dashed #7c3aed' : 'none',
+                    backgroundColor: isBreadcrumbDropTarget
+                      ? '#f3e8ff'
+                      : (isLast ? '#f3e8ff' : 'transparent'),
+                    color: isBreadcrumbDropTarget
+                      ? '#7c3aed'
+                      : (isLast ? '#5a3d5c' : '#64748b'),
+                    fontSize: '13px',
+                    fontWeight: (isLast || isBreadcrumbDropTarget) ? '700' : '500',
+                    cursor: 'pointer',
+                    transform: isBreadcrumbDropTarget ? 'scale(1.08)' : 'none',
+                    boxShadow: isBreadcrumbDropTarget ? '0 0 10px rgba(124, 58, 237, 0.25)' : 'none',
+                    transition: 'all 0.12s',
+                  }}
+                >
+                  <span>📁</span>
+                  <span>{isBreadcrumbDropTarget ? `Mută în "${b.name}"` : b.name}</span>
+                </button>
+              </span>
             );
           })}
         </div>
 
         {/* Search */}
-        <div style={{ minWidth: '240px', flex: '1 1 240px', maxWidth: '380px' }}>
+        <div style={{ minWidth: '240px', flex: '1 1 240px', maxWidth: '380px', position: 'relative' }}>
           <input
             type="text"
-            placeholder="🔍 Caută documente, notițe..."
+            placeholder="🔍 Caută foldere, documente, notițe..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             style={{
@@ -512,272 +1113,649 @@ export default function KnowledgePage({ currentUser }) {
               boxSizing: 'border-box',
             }}
           />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              style={{
+                position: 'absolute',
+                right: '8px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                border: 'none',
+                background: 'none',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                fontSize: '14px',
+              }}
+            >
+              ✕
+            </button>
+          )}
         </div>
       </div>
 
-      {/* ── Grid of Items ─────────────────────────────────────────── */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>Se încarcă resursele...</div>
-      ) : filteredItems.length === 0 ? (
-        <div
-          style={{
-            textAlign: 'center',
-            padding: '60px 20px',
-            backgroundColor: '#ffffff',
-            borderRadius: '12px',
-            border: '2px dashed #cbd5e1',
-            color: '#64748b',
-          }}
-        >
-          <div style={{ fontSize: '36px', marginBottom: '10px' }}>📂</div>
-          <div style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b' }}>Nicio resursă găsită</div>
-          <p style={{ margin: '6px 0 0', fontSize: '13px' }}>
-            {items.length === 0
-              ? 'Folosește butonul „➕ Adaugă” pentru a încărca fișiere Drive sau a crea prima notiță!'
-              : 'Niciun element nu se potrivește căutării sau filtrului ales.'}
-          </p>
-        </div>
       ) : (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: '16px',
-          }}
-        >
-          {filteredItems.map(item => {
-            const isDrive = item.itemType === 'DRIVE';
-            const meta = isDrive ? getFileMeta(item.fileName, item.fileType) : null;
-            const ytId = !isDrive ? extractYouTubeId(item.content || item.youtubeUrl) : null;
-
-            let imgs = [];
-            if (!isDrive && item.imagesJson) {
-              try { imgs = JSON.parse(item.imagesJson); } catch (_) {}
-            }
-
-            return (
+        <div>
+          {/* ── SECTION 1: FOLDERS ──────────────────────────────────── */}
+          {displayedFolders.length > 0 && (
+            <div style={{ marginBottom: '32px' }}>
               <div
-                key={item.id}
-                onClick={() => setViewingItem(item)}
                 style={{
-                  backgroundColor: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '12px',
-                  padding: '18px',
+                  fontSize: '14px',
+                  fontWeight: '700',
+                  color: '#475569',
+                  marginBottom: '12px',
                   display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  position: 'relative',
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.08)';
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)';
+                  alignItems: 'center',
+                  gap: '6px',
                 }}
               >
-                <div>
-                  {/* Top Badge & Delete Button */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                    {isDrive ? (
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '4px 10px',
-                          borderRadius: '8px',
-                          fontSize: '12px',
-                          fontWeight: '700',
-                          backgroundColor: meta.bg,
-                          color: meta.color,
-                          border: `1px solid ${meta.border}`,
-                        }}
-                      >
-                        <span>{meta.icon}</span>
-                        <span>{meta.label}</span>
-                      </span>
-                    ) : (
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '4px 10px',
-                          borderRadius: '8px',
-                          fontSize: '12px',
-                          fontWeight: '700',
-                          backgroundColor: '#f3e8ff',
-                          color: '#6b21a8',
-                          border: '1px solid #e9d5ff',
-                        }}
-                      >
-                        <span>📝</span>
-                        <span>Notiță</span>
-                      </span>
-                    )}
+                <span>📁</span>
+                <span>Foldere ({displayedFolders.length})</span>
+              </div>
 
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      <button
-                        onClick={(e) => handleDelete(item, e)}
-                        title="Șterge"
-                        style={{
-                          border: 'none',
-                          backgroundColor: 'transparent',
-                          color: '#94a3b8',
-                          cursor: 'pointer',
-                          padding: '4px',
-                          borderRadius: '4px',
-                          fontSize: '14px',
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.color = '#dc2626')}
-                        onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+                  gap: '14px',
+                }}
+              >
+                {displayedFolders.map(folder => {
+                  const counts = getFolderCounts(folder.id);
+                  const isDraggingThis = draggedElement?.type === 'FOLDER' && draggedElement.id === folder.id;
+                  const isDropTarget = activeDropTargetId === folder.id;
 
-                  {/* Title */}
-                  <h3
-                    style={{
-                      margin: '0 0 8px 0',
-                      fontSize: '1.05rem',
-                      fontWeight: '700',
-                      color: '#1e293b',
-                      wordBreak: 'break-word',
-                      lineHeight: 1.3,
-                    }}
-                  >
-                    {item.title}
-                  </h3>
-
-                  {/* Content snippet / file info */}
-                  {isDrive ? (
-                    <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '14px' }}>
-                      <div style={{ fontWeight: '600', color: '#334155', wordBreak: 'break-all' }}>
-                        📄 {item.fileName}
-                      </div>
-                      <div style={{ marginTop: '4px' }}>
-                        Mărime: <strong>{formatBytes(item.fileSize)}</strong>
-                      </div>
-                    </div>
-                  ) : (
+                  return (
                     <div
-                      style={{
-                        fontSize: '13px',
-                        color: '#64748b',
-                        marginBottom: '14px',
-                        maxHeight: '60px',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 3,
-                        WebkitBoxOrient: 'vertical',
-                        lineHeight: 1.4,
+                      key={folder.id}
+                      draggable={true}
+                      onDragStart={(e) => {
+                        handleDragStart(e, {
+                          type: 'FOLDER',
+                          id: folder.id,
+                          name: folder.name,
+                          parentId: folder.parentId,
+                        });
                       }}
-                    >
-                      {item.content || 'Fără conținut text'}
-                    </div>
-                  )}
-
-                  {/* Badges for YouTube / Images in Note */}
-                  {!isDrive && (
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                      {ytId && (
-                        <span
-                          style={{
-                            fontSize: '11px',
-                            fontWeight: '600',
-                            padding: '2px 8px',
-                            borderRadius: '6px',
-                            backgroundColor: '#fee2e2',
-                            color: '#dc2626',
-                            border: '1px solid #fca5a5',
-                          }}
-                        >
-                          🎬 Video YouTube
-                        </span>
-                      )}
-                      {imgs.length > 0 && (
-                        <span
-                          style={{
-                            fontSize: '11px',
-                            fontWeight: '600',
-                            padding: '2px 8px',
-                            borderRadius: '6px',
-                            backgroundColor: '#e0f2fe',
-                            color: '#0284c7',
-                            border: '1px solid #bae6fd',
-                          }}
-                        >
-                          📷 {imgs.length} {imgs.length === 1 ? 'poză' : 'poze'}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer Info / Action */}
-                <div
-                  style={{
-                    borderTop: '1px solid #f1f5f9',
-                    paddingTop: '12px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    fontSize: '11px',
-                    color: '#94a3b8',
-                  }}
-                >
-                  <span>👤 {item.creator?.username || 'User'}</span>
-
-                  {isDrive ? (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDownload(item);
+                      onDragEnd={handleDragEnd}
+                      onDragOver={(e) => handleDragOverTarget(e, folder.id)}
+                      onDragLeave={(e) => handleDragLeaveTarget(e, folder.id)}
+                      onDrop={(e) => handleDropOnTarget(e, folder.id, folder.name)}
+                      onClick={() => {
+                        if (draggedElement) return;
+                        if (Date.now() - dropOccurredAtRef.current < 250) return;
+                        setCurrentFolderId(folder.id);
+                        setSearch('');
                       }}
                       style={{
-                        display: 'inline-flex',
+                        backgroundColor: isDropTarget ? '#faf5ff' : '#ffffff',
+                        border: isDropTarget
+                          ? '2px dashed #7c3aed'
+                          : isDraggingThis
+                          ? '2px dashed #cbd5e1'
+                          : '1px solid #e2e8f0',
+                        borderRadius: '10px',
+                        padding: '14px 16px',
+                        display: 'flex',
                         alignItems: 'center',
-                        gap: '4px',
-                        padding: '4px 10px',
-                        borderRadius: '6px',
-                        backgroundColor: '#f1f5f9',
-                        color: '#334155',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        transition: 'all 0.12s',
+                        justifyContent: 'space-between',
+                        cursor: 'grab',
+                        boxShadow: isDropTarget
+                          ? '0 10px 25px rgba(124, 58, 237, 0.22)'
+                          : isDraggingThis
+                          ? 'none'
+                          : '0 1px 3px rgba(0,0,0,0.03)',
+                        transform: isDropTarget ? 'scale(1.02)' : 'none',
+                        opacity: isDraggingThis ? 0.35 : 1,
+                        transition: 'all 0.15s ease',
+                        position: 'relative',
+                        userSelect: 'none',
                       }}
                       onMouseEnter={e => {
-                        e.currentTarget.style.backgroundColor = '#e2e8f0';
+                        if (!draggedElement) {
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.borderColor = '#c084fc';
+                          e.currentTarget.style.boxShadow = '0 6px 14px rgba(90, 61, 92, 0.08)';
+                        }
                       }}
                       onMouseLeave={e => {
-                        e.currentTarget.style.backgroundColor = '#f1f5f9';
+                        if (!draggedElement) {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.borderColor = '#e2e8f0';
+                          e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.03)';
+                        }
                       }}
                     >
-                      <span>⬇️</span> Descarcă
-                    </button>
-                  ) : (
-                    <span style={{ fontWeight: '600', color: '#6b21a8' }}>Deschide ➔</span>
-                  )}
-                </div>
+                      {/* Drop overlay badge */}
+                      {isDropTarget && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            backgroundColor: 'rgba(250, 245, 255, 0.95)',
+                            borderRadius: '9px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            color: '#7c3aed',
+                            fontWeight: '700',
+                            fontSize: '13px',
+                            zIndex: 10,
+                            pointerEvents: 'none',
+                          }}
+                        >
+                          <span>📥</span>
+                          <span>Plasează în „{folder.name}”</span>
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+                        <span style={{ fontSize: '32px', color: '#a855f7' }}>📁</span>
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontWeight: '700',
+                              fontSize: '14px',
+                              color: '#1e293b',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={folder.name}
+                          >
+                            {folder.name}
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                            {counts.subCount > 0 && `${counts.subCount} foldere · `}
+                            {counts.itCount} {counts.itCount === 1 ? 'element' : 'elemente'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Folder Actions & Drag Handle */}
+                      <div
+                        style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '8px' }}
+                        onClick={e => e.stopPropagation()}
+                        onMouseDown={e => e.stopPropagation()}
+                      >
+                        <span
+                          title="Trage acest folder pentru a-l muta în alt folder"
+                          style={{
+                            color: '#cbd5e1',
+                            fontSize: '16px',
+                            cursor: 'grab',
+                            padding: '2px 4px',
+                            userSelect: 'none',
+                          }}
+                        >
+                          ⋮⋮
+                        </span>
+                        <button
+                          draggable={false}
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={() => {
+                            setRenamingFolder(folder);
+                            setFolderNameInput(folder.name);
+                          }}
+                          title="Redenumește folderul"
+                          style={{
+                            border: 'none',
+                            background: 'transparent',
+                            color: '#94a3b8',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            fontSize: '13px',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.color = '#5a3d5c')}
+                          onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          draggable={false}
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={(e) => handleDeleteFolder(folder, e)}
+                          title="Șterge folderul"
+                          style={{
+                            border: 'none',
+                            background: 'transparent',
+                            color: '#94a3b8',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            fontSize: '13px',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.color = '#dc2626')}
+                          onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          )}
+
+          {/* ── SECTION 2: ITEMS (Docs, Sheets, PDF, Notes) ─────────── */}
+          <div>
+            <div
+              style={{
+                fontSize: '14px',
+                fontWeight: '700',
+                color: '#475569',
+                marginBottom: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <span>📄</span>
+              <span>Fișiere & Notițe ({displayedItems.length})</span>
+            </div>
+
+            {displayedItems.length === 0 && displayedFolders.length === 0 ? (
+              <div
+                style={{
+                  textAlign: 'center',
+                  padding: '50px 20px',
+                  backgroundColor: '#ffffff',
+                  borderRadius: '12px',
+                  border: '2px dashed #cbd5e1',
+                  color: '#64748b',
+                }}
+              >
+                <div style={{ fontSize: '36px', marginBottom: '10px' }}>📂</div>
+                <div style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b' }}>
+                  {currentFolder ? `Folderul "${currentFolder.name}" este gol` : 'Nicio resursă încă'}
+                </div>
+                <p style={{ margin: '6px 0 0', fontSize: '13px' }}>
+                  Apasă pe butonul „➕ Adaugă” de sus pentru a crea un folder sau a adăuga Google Docs, Sheets, PDF sau o notiță!
+                </p>
+              </div>
+            ) : displayedItems.length === 0 ? (
+              <div
+                style={{
+                  padding: '24px',
+                  backgroundColor: '#ffffff',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  color: '#64748b',
+                  fontSize: '13px',
+                  textAlign: 'center',
+                }}
+              >
+                Nu există fișiere sau notițe directe aici. Poți explora subfolderele de mai sus sau adăuga unul nou!
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                  gap: '16px',
+                }}
+              >
+                {displayedItems.map(item => {
+                  const isDrive = item.itemType === 'DRIVE';
+                  const driveMeta = isDrive ? getDriveItemMeta(item) : null;
+                  const ytId = !isDrive ? extractYouTubeId(item.content || item.youtubeUrl) : null;
+                  const isDraggingThis = draggedElement?.type === 'ITEM' && draggedElement.id === item.id;
+
+                  // Folder tag if in search mode
+                  const parentF = search.trim() && item.folderId
+                    ? folders.find(f => f.id === item.folderId)
+                    : null;
+
+                  let imgs = [];
+                  if (!isDrive && item.imagesJson) {
+                    try { imgs = JSON.parse(item.imagesJson); } catch (_) {}
+                  }
+
+                  return (
+                    <div
+                      key={item.id}
+                      draggable={true}
+                      onDragStart={(e) => {
+                        handleDragStart(e, {
+                          type: 'ITEM',
+                          id: item.id,
+                          name: item.title,
+                          folderId: item.folderId,
+                        });
+                      }}
+                      onDragEnd={handleDragEnd}
+                      onClick={() => {
+                        if (draggedElement) return;
+                        if (Date.now() - dropOccurredAtRef.current < 250) return;
+                        setViewingItem(item);
+                      }}
+                      style={{
+                        backgroundColor: '#ffffff',
+                        border: isDraggingThis ? '2px dashed #7c3aed' : '1px solid #e2e8f0',
+                        borderRadius: '12px',
+                        padding: '18px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        boxShadow: isDraggingThis ? 'none' : '0 1px 3px rgba(0,0,0,0.04)',
+                        cursor: 'grab',
+                        opacity: isDraggingThis ? 0.35 : 1,
+                        transition: 'all 0.15s ease',
+                        position: 'relative',
+                        userSelect: 'none',
+                      }}
+                      onMouseEnter={e => {
+                        if (!draggedElement) {
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.08)';
+                        }
+                      }}
+                      onMouseLeave={e => {
+                        if (!draggedElement) {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)';
+                        }
+                      }}
+                    >
+                      <div>
+                        {/* Top Badge, Drag Handle & Delete Button */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            {isDrive ? (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '4px 10px',
+                                  borderRadius: '8px',
+                                  fontSize: '12px',
+                                  fontWeight: '700',
+                                  backgroundColor: driveMeta.bg,
+                                  color: driveMeta.color,
+                                  border: `1px solid ${driveMeta.border}`,
+                                }}
+                              >
+                                <span>{driveMeta.icon}</span>
+                                <span>{driveMeta.label}</span>
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '4px 10px',
+                                  borderRadius: '8px',
+                                  fontSize: '12px',
+                                  fontWeight: '700',
+                                  backgroundColor: '#f3e8ff',
+                                  color: '#6b21a8',
+                                  border: '1px solid #e9d5ff',
+                                }}
+                              >
+                                <span>📝</span>
+                                <span>Notiță</span>
+                              </span>
+                            )}
+
+                            {parentF && (
+                              <span
+                                draggable={false}
+                                onMouseDown={e => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCurrentFolderId(parentF.id);
+                                  setSearch('');
+                                }}
+                                title="Mergi la folder"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  fontWeight: '600',
+                                  backgroundColor: '#f1f5f9',
+                                  color: '#475569',
+                                  border: '1px solid #cbd5e1',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <span>📁</span>
+                                <span>{parentF.name}</span>
+                              </span>
+                            )}
+                          </div>
+
+                          <div
+                            style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                            onClick={e => e.stopPropagation()}
+                            onMouseDown={e => e.stopPropagation()}
+                          >
+                            <span
+                              title="Trage acest card pentru a-l muta în alt folder"
+                              style={{
+                                color: '#cbd5e1',
+                                fontSize: '16px',
+                                cursor: 'grab',
+                                padding: '2px 4px',
+                                userSelect: 'none',
+                              }}
+                            >
+                              ⋮⋮
+                            </span>
+                            <button
+                              draggable={false}
+                              onMouseDown={e => e.stopPropagation()}
+                              onClick={(e) => handleDelete(item, e)}
+                              title="Șterge"
+                              style={{
+                                border: 'none',
+                                backgroundColor: 'transparent',
+                                color: '#94a3b8',
+                                cursor: 'pointer',
+                                padding: '4px',
+                                borderRadius: '4px',
+                                fontSize: '14px',
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.color = '#dc2626')}
+                              onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Title */}
+                        <h3
+                          style={{
+                            margin: '0 0 8px 0',
+                            fontSize: '1.05rem',
+                            fontWeight: '700',
+                            color: '#1e293b',
+                            wordBreak: 'break-word',
+                            lineHeight: 1.3,
+                          }}
+                        >
+                          {item.title}
+                        </h3>
+
+                        {/* Content snippet / Drive info */}
+                        {isDrive ? (
+                          <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '14px' }}>
+                            {driveMeta.isLink ? (
+                              <div
+                                style={{
+                                  fontWeight: '500',
+                                  color: '#2563eb',
+                                  wordBreak: 'break-all',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  background: '#f8fafc',
+                                  padding: '6px 10px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #e2e8f0',
+                                }}
+                              >
+                                <span>🔗</span>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {item.fileData || item.content}
+                                </span>
+                              </div>
+                            ) : (
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  background: '#f8fafc',
+                                  padding: '6px 10px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #e2e8f0',
+                                }}
+                              >
+                                <span style={{ fontWeight: '600', color: '#334155' }}>📑 {item.fileName}</span>
+                                <span>{formatBytes(item.fileSize)}</span>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              fontSize: '13px',
+                              color: '#64748b',
+                              marginBottom: '14px',
+                              maxHeight: '60px',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 3,
+                              WebkitBoxOrient: 'vertical',
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {item.content || 'Fără conținut text'}
+                          </div>
+                        )}
+
+                        {/* Badges for YouTube / Images in Note */}
+                        {!isDrive && (
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                            {ytId && (
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: '600',
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                  backgroundColor: '#fee2e2',
+                                  color: '#dc2626',
+                                  border: '1px solid #fca5a5',
+                                }}
+                              >
+                                🎬 Video YouTube
+                              </span>
+                            )}
+                            {imgs.length > 0 && (
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: '600',
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                  backgroundColor: '#e0f2fe',
+                                  color: '#0284c7',
+                                  border: '1px solid #bae6fd',
+                                }}
+                              >
+                                📷 {imgs.length} {imgs.length === 1 ? 'poză' : 'poze'}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Footer Info / Action */}
+                      <div
+                        style={{
+                          borderTop: '1px solid #f1f5f9',
+                          paddingTop: '12px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          fontSize: '11px',
+                          color: '#94a3b8',
+                        }}
+                      >
+                        <span>👤 {item.creator?.username || 'User'}</span>
+
+                        {isDrive ? (
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                              onClick={(e) => handleOpenDriveItem(item, e)}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                padding: '5px 12px',
+                                borderRadius: '6px',
+                                backgroundColor: driveMeta.bg,
+                                color: driveMeta.color,
+                                border: `1px solid ${driveMeta.border}`,
+                                fontSize: '12px',
+                                fontWeight: '700',
+                                cursor: 'pointer',
+                                transition: 'all 0.12s',
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(0.95)')}
+                              onMouseLeave={e => (e.currentTarget.style.filter = 'none')}
+                            >
+                              <span>{driveMeta.icon}</span>
+                              <span>{driveMeta.actionText}</span>
+                            </button>
+
+                            {!driveMeta.isLink && item.fileData && (
+                              <button
+                                onClick={(e) => handleDownloadFile(item, e)}
+                                title="Descarcă fișierul"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  padding: '5px 8px',
+                                  borderRadius: '6px',
+                                  backgroundColor: '#f1f5f9',
+                                  color: '#475569',
+                                  border: '1px solid #cbd5e1',
+                                  fontSize: '12px',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                ⬇️
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: '#5a3d5c', fontWeight: '600' }}>Citește notița →</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* ── View / Read Note Modal ─────────────────────────────────── */}
-      {viewingItem && viewingItem.itemType !== 'DRIVE' && (
+      {/* ── View Item Modal (Note or Drive) ────────────────────────── */}
+      {viewingItem && (
         <div
           style={{
             position: 'fixed',
@@ -798,7 +1776,7 @@ export default function KnowledgePage({ currentUser }) {
               backgroundColor: '#ffffff',
               borderRadius: '14px',
               width: '100%',
-              maxWidth: '680px',
+              maxWidth: viewingItem.itemType === 'DRIVE' ? '760px' : '680px',
               maxHeight: '90vh',
               overflowY: 'auto',
               padding: '28px',
@@ -807,50 +1785,78 @@ export default function KnowledgePage({ currentUser }) {
             }}
           >
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
               <div>
-                <span
-                  style={{
-                    display: 'inline-block',
-                    padding: '3px 8px',
-                    borderRadius: '6px',
-                    fontSize: '11px',
-                    fontWeight: '700',
-                    backgroundColor: '#f3e8ff',
-                    color: '#6b21a8',
-                    marginBottom: '8px',
-                  }}
-                >
-                  📝 Notiță
-                </span>
+                {viewingItem.itemType === 'DRIVE' ? (
+                  (() => {
+                    const m = getDriveItemMeta(viewingItem);
+                    return (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          backgroundColor: m.bg,
+                          color: m.color,
+                          border: `1px solid ${m.border}`,
+                          marginBottom: '8px',
+                        }}
+                      >
+                        <span>{m.icon}</span>
+                        <span>{m.label}</span>
+                      </span>
+                    );
+                  })()
+                ) : (
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      backgroundColor: '#f3e8ff',
+                      color: '#6b21a8',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    📝 Notiță
+                  </span>
+                )}
                 <h2 style={{ margin: 0, fontSize: '1.45rem', fontWeight: '800', color: '#1e293b' }}>
                   {viewingItem.title}
                 </h2>
                 <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
-                  Autor: <strong>{viewingItem.creator?.username || 'Utilizator'}</strong>
+                  Adăugat de: <strong>{viewingItem.creator?.username || 'Utilizator'}</strong>
                 </div>
               </div>
 
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  onClick={() => {
-                    const it = viewingItem;
-                    setViewingItem(null);
-                    handleEditNote(it);
-                  }}
-                  style={{
-                    padding: '6px 12px',
-                    backgroundColor: '#f1f5f9',
-                    color: '#334155',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                  }}
-                >
-                  ✏️ Editează
-                </button>
+                {viewingItem.itemType !== 'DRIVE' && (
+                  <button
+                    onClick={() => {
+                      const it = viewingItem;
+                      setViewingItem(null);
+                      handleEditNote(it);
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      backgroundColor: '#f1f5f9',
+                      color: '#334155',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ✏️ Editează
+                  </button>
+                )}
                 <button
                   onClick={() => setViewingItem(null)}
                   style={{
@@ -867,84 +1873,195 @@ export default function KnowledgePage({ currentUser }) {
               </div>
             </div>
 
-            {/* Note Content */}
-            <div
-              style={{
-                fontSize: '14px',
-                color: '#334155',
-                lineHeight: 1.6,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                padding: '16px',
-                backgroundColor: '#f8fafc',
-                borderRadius: '8px',
-                border: '1px solid #e2e8f0',
-                marginBottom: '20px',
-              }}
-            >
-              {viewingItem.content || 'Fără conținut'}
-            </div>
-
-            {/* Embedded YouTube Player if detected */}
-            {(() => {
-              const ytId = extractYouTubeId(viewingItem.content || viewingItem.youtubeUrl);
-              if (!ytId) return null;
-              return (
-                <div style={{ marginBottom: '22px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#dc2626', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>🎬</span> Videoclip YouTube atașat (Play direct)
-                  </div>
-                  <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: '10px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                    <iframe
-                      src={`https://www.youtube.com/embed/${ytId}`}
-                      title="YouTube video player"
-                      style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Images Gallery */}
-            {(() => {
-              let imgs = [];
-              try {
-                imgs = viewingItem.imagesJson ? JSON.parse(viewingItem.imagesJson) : [];
-              } catch (_) {}
-              if (!imgs || imgs.length === 0) return null;
-
-              return (
-                <div>
-                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px' }}>
-                    📷 Poze atașate ({imgs.length})
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px' }}>
-                    {imgs.map((img, i) => (
+            {/* Content: Drive View vs Note View */}
+            {viewingItem.itemType === 'DRIVE' ? (
+              <div>
+                {(() => {
+                  const m = getDriveItemMeta(viewingItem);
+                  return (
+                    <div style={{ marginBottom: '20px' }}>
                       <div
-                        key={i}
-                        onClick={() => setLightboxImg(img)}
                         style={{
-                          height: '110px',
-                          borderRadius: '8px',
-                          overflow: 'hidden',
-                          border: '1px solid #e2e8f0',
-                          cursor: 'pointer',
-                          backgroundColor: '#f1f5f9',
+                          padding: '16px 20px',
+                          backgroundColor: m.bg,
+                          border: `1px solid ${m.border}`,
+                          borderRadius: '10px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '16px',
+                          flexWrap: 'wrap',
                         }}
                       >
-                        <img
-                          src={img}
-                          alt="Notiță"
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <span style={{ fontSize: '32px' }}>{m.icon}</span>
+                          <div>
+                            <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px' }}>
+                              {m.label}
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#64748b', wordBreak: 'break-all' }}>
+                              {viewingItem.fileData || viewingItem.content}
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => handleOpenDriveItem(viewingItem)}
+                          style={{
+                            padding: '10px 18px',
+                            backgroundColor: m.color,
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '8px',
+                            fontWeight: '700',
+                            fontSize: '13px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                          }}
+                        >
+                          <span>🔗</span>
+                          <span>Deschide în filă nouă ↗</span>
+                        </button>
+                      </div>
+
+                      {/* If it's a PDF with base64 data, embed preview */}
+                      {viewingItem.fileData && !viewingItem.fileData.startsWith('http') && (
+                        <div style={{ marginTop: '20px' }}>
+                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '8px' }}>
+                            Previzualizare PDF:
+                          </div>
+                          <iframe
+                            src={`data:application/pdf;base64,${viewingItem.fileData}`}
+                            title="PDF Preview"
+                            style={{
+                              width: '100%',
+                              height: '480px',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '8px',
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : (
+              <div>
+                {/* Note Content */}
+                <div
+                  style={{
+                    fontSize: '14px',
+                    color: '#334155',
+                    lineHeight: 1.6,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    padding: '16px',
+                    backgroundColor: '#f8fafc',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    marginBottom: '20px',
+                  }}
+                >
+                  {viewingItem.content || 'Fără conținut'}
+                </div>
+
+                {/* Embedded YouTube Player if detected */}
+                {(() => {
+                  const ytId = extractYouTubeId(viewingItem.content || viewingItem.youtubeUrl);
+                  if (!ytId) return null;
+                  return (
+                    <div style={{ marginBottom: '22px' }}>
+                      <div
+                        style={{
+                          fontSize: '13px',
+                          fontWeight: '700',
+                          color: '#dc2626',
+                          marginBottom: '8px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        <span>🎬</span> Videoclip YouTube atașat (Play direct)
+                      </div>
+                      <div
+                        style={{
+                          position: 'relative',
+                          paddingBottom: '56.25%',
+                          height: 0,
+                          overflow: 'hidden',
+                          borderRadius: '10px',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                        }}
+                      >
+                        <iframe
+                          src={`https://www.youtube.com/embed/${ytId}`}
+                          title="YouTube video player"
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            height: '100%',
+                            border: 'none',
+                          }}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
                         />
                       </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
+                    </div>
+                  );
+                })()}
+
+                {/* Images Gallery */}
+                {(() => {
+                  let imgs = [];
+                  if (viewingItem.imagesJson) {
+                    try { imgs = JSON.parse(viewingItem.imagesJson); } catch (_) {}
+                  }
+                  if (imgs.length === 0) return null;
+                  return (
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px' }}>
+                        📷 Poze atașate ({imgs.length})
+                      </div>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+                          gap: '10px',
+                        }}
+                      >
+                        {imgs.map((img, i) => (
+                          <div
+                            key={i}
+                            onClick={() => setLightboxImg(img)}
+                            style={{
+                              height: '110px',
+                              borderRadius: '8px',
+                              overflow: 'hidden',
+                              border: '1px solid #e2e8f0',
+                              cursor: 'pointer',
+                              backgroundColor: '#f1f5f9',
+                            }}
+                          >
+                            <img
+                              src={img}
+                              alt="Notiță"
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px' }}>
               <button
@@ -963,6 +2080,128 @@ export default function KnowledgePage({ currentUser }) {
                 Închide
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Create / Edit Folder Modal ─────────────────────────────── */}
+      {(isFolderModalOpen || renamingFolder) && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '16px',
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '12px',
+              width: '100%',
+              maxWidth: '420px',
+              padding: '24px',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+              textAlign: 'left',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#1e293b', fontWeight: '800' }}>
+                {renamingFolder ? '✏️ Redenumește folderul' : '📁 Creează Folder Nou'}
+              </h3>
+              <button
+                onClick={() => {
+                  setIsFolderModalOpen(false);
+                  setRenamingFolder(null);
+                  setFolderNameInput('');
+                }}
+                style={{
+                  border: 'none',
+                  background: 'none',
+                  fontSize: '18px',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  padding: '4px',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={renamingFolder ? handleRenameFolder : handleCreateFolder}>
+              {!renamingFolder && (
+                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
+                  Locație: <strong>{currentFolder ? `📁 ${currentFolder.name}` : '🏠 Rădăcină'}</strong>
+                </div>
+              )}
+
+              <div style={{ marginBottom: '18px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+                  Nume folder *
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="ex: Documentație Tehnică, Sprint 1, Ghiduri..."
+                  value={folderNameInput}
+                  onChange={e => setFolderNameInput(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsFolderModalOpen(false);
+                    setRenamingFolder(null);
+                    setFolderNameInput('');
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#f1f5f9',
+                    color: '#475569',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Anulează
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    padding: '8px 18px',
+                    backgroundColor: '#5a3d5c',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {renamingFolder ? 'Salvează' : 'Creează Folder'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -999,7 +2238,7 @@ export default function KnowledgePage({ currentUser }) {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
               <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#1e293b', fontWeight: '800' }}>
-                {editingId ? '✏️ Editează Notița' : '📝 Notiță Nouă'}
+                {editingId ? '✏️ Editează Notița' : '📝 Creează Notiță Simplă'}
               </h3>
               <button
                 onClick={() => setIsNoteModalOpen(false)}
@@ -1017,6 +2256,10 @@ export default function KnowledgePage({ currentUser }) {
             </div>
 
             <form onSubmit={handleSaveNote}>
+              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
+                Locație: <strong>{currentFolder ? `📁 ${currentFolder.name}` : '🏠 Rădăcină'}</strong>
+              </div>
+
               {/* Titlu */}
               <div style={{ marginBottom: '14px' }}>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
@@ -1025,8 +2268,7 @@ export default function KnowledgePage({ currentUser }) {
                 <input
                   type="text"
                   required
-                  autoFocus
-                  placeholder="ex: Notițe ședință, idei proiect..."
+                  placeholder="ex: Idei proiect, Notițe ședință..."
                   value={noteTitle}
                   onChange={e => setNoteTitle(e.target.value)}
                   style={{
@@ -1043,11 +2285,11 @@ export default function KnowledgePage({ currentUser }) {
               {/* Conținut */}
               <div style={{ marginBottom: '14px' }}>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
-                  Conținut (lipește link YouTube direct în text)
+                  Conținut (linkurile YouTube sunt detectate automat)
                 </label>
                 <textarea
                   rows={5}
-                  placeholder="Scrie notița aici... (dacă lipești un link YouTube va fi afișat automat videoclipul)"
+                  placeholder="Scrie notița aici... Poți include un link YouTube (ex: https://youtube.com/watch?v=...) și se va genera automat player-ul video!"
                   value={noteContent}
                   onChange={e => setNoteContent(e.target.value)}
                   style={{
@@ -1056,25 +2298,35 @@ export default function KnowledgePage({ currentUser }) {
                     borderRadius: '6px',
                     border: '1px solid #cbd5e1',
                     fontSize: '13px',
-                    boxSizing: 'border-box',
-                    resize: 'vertical',
                     lineHeight: 1.5,
+                    resize: 'vertical',
+                    boxSizing: 'border-box',
                   }}
                 />
               </div>
 
-              {/* YouTube Live Detection Preview */}
+              {/* YouTube Preview if detected */}
               {detectedYouTubeId && (
                 <div
                   style={{
                     marginBottom: '16px',
-                    padding: '12px 14px',
+                    padding: '12px',
                     backgroundColor: '#fef2f2',
                     borderRadius: '8px',
                     border: '1px solid #fecaca',
                   }}
                 >
-                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#dc2626', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div
+                    style={{
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      color: '#dc2626',
+                      marginBottom: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
                     <span>🎬</span> Videoclip YouTube detectat automat:
                   </div>
                   <div style={{ position: 'relative', paddingBottom: '45%', height: 0, overflow: 'hidden', borderRadius: '8px' }}>
@@ -1096,14 +2348,13 @@ export default function KnowledgePage({ currentUser }) {
                   </label>
                   <label
                     style={{
-                      padding: '5px 12px',
-                      backgroundColor: '#f1f5f9',
-                      color: '#475569',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: '6px',
                       fontSize: '12px',
                       fontWeight: '600',
+                      color: '#5a3d5c',
                       cursor: 'pointer',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      backgroundColor: '#f3e8ff',
                     }}
                   >
                     + Adaugă poze
@@ -1119,18 +2370,28 @@ export default function KnowledgePage({ currentUser }) {
 
                 {noteImages.length > 0 && (
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {noteImages.map((img, i) => (
-                      <div key={i} style={{ position: 'relative', width: '70px', height: '70px', borderRadius: '6px', overflow: 'hidden', border: '1px solid #cbd5e1' }}>
+                    {noteImages.map((img, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          position: 'relative',
+                          width: '70px',
+                          height: '70px',
+                          borderRadius: '6px',
+                          overflow: 'hidden',
+                          border: '1px solid #cbd5e1',
+                        }}
+                      >
                         <img src={img} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         <button
                           type="button"
-                          onClick={() => removeNoteImage(i)}
+                          onClick={() => removeNoteImage(idx)}
                           style={{
                             position: 'absolute',
                             top: '2px',
                             right: '2px',
                             backgroundColor: 'rgba(0,0,0,0.6)',
-                            color: '#ffffff',
+                            color: 'white',
                             border: 'none',
                             borderRadius: '50%',
                             width: '18px',
@@ -1140,7 +2401,6 @@ export default function KnowledgePage({ currentUser }) {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            padding: 0,
                           }}
                         >
                           ✕
@@ -1192,7 +2452,7 @@ export default function KnowledgePage({ currentUser }) {
         </div>
       )}
 
-      {/* ── Upload Drive File Modal ─────────────────────────────────── */}
+      {/* ── Add Drive Resource Modal (Docs, Sheets, PDF) ───────────── */}
       {isDriveModalOpen && (
         <div
           style={{
@@ -1214,7 +2474,7 @@ export default function KnowledgePage({ currentUser }) {
               backgroundColor: '#ffffff',
               borderRadius: '12px',
               width: '100%',
-              maxWidth: '500px',
+              maxWidth: '520px',
               padding: '26px',
               boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
               textAlign: 'left',
@@ -1222,7 +2482,7 @@ export default function KnowledgePage({ currentUser }) {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
               <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#1e293b', fontWeight: '800' }}>
-                📁 Încarcă fișier Drive (Word, Excel)
+                📁 Adaugă resursă Drive (Docs, Sheets, PDF)
               </h3>
               <button
                 onClick={() => setIsDriveModalOpen(false)}
@@ -1239,59 +2499,168 @@ export default function KnowledgePage({ currentUser }) {
               </button>
             </div>
 
+            {/* Mode Selector Tabs: LINK vs PDF FILE */}
+            <div
+              style={{
+                display: 'flex',
+                gap: '8px',
+                marginBottom: '18px',
+                padding: '4px',
+                backgroundColor: '#f1f5f9',
+                borderRadius: '8px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setDriveMode('LINK')}
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  border: 'none',
+                  borderRadius: '6px',
+                  backgroundColor: driveMode === 'LINK' ? '#ffffff' : 'transparent',
+                  color: driveMode === 'LINK' ? '#1e293b' : '#64748b',
+                  fontWeight: driveMode === 'LINK' ? '700' : '500',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  boxShadow: driveMode === 'LINK' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  transition: 'all 0.12s',
+                }}
+              >
+                🔗 Link Docs / Sheets / PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => setDriveMode('FILE')}
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  border: 'none',
+                  borderRadius: '6px',
+                  backgroundColor: driveMode === 'FILE' ? '#ffffff' : 'transparent',
+                  color: driveMode === 'FILE' ? '#1e293b' : '#64748b',
+                  fontWeight: driveMode === 'FILE' ? '700' : '500',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  boxShadow: driveMode === 'FILE' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  transition: 'all 0.12s',
+                }}
+              >
+                📤 Încarcă fișier PDF
+              </button>
+            </div>
+
             <form onSubmit={handleSaveDrive}>
-              {/* File Select */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '8px' }}>
-                  Selectează documentul de pe disc *
-                </label>
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  style={{
-                    border: '2px dashed #cbd5e1',
-                    borderRadius: '8px',
-                    padding: '24px 16px',
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    backgroundColor: driveFile ? '#f0fdf4' : '#f8fafc',
-                    borderColor: driveFile ? '#86efac' : '#cbd5e1',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.txt"
-                    onChange={handleDriveFileSelect}
-                    style={{ display: 'none' }}
-                  />
-                  {driveFile ? (
-                    <div>
-                      <div style={{ fontSize: '28px', marginBottom: '4px' }}>
-                        {getFileMeta(driveFile.name, driveFile.type).icon}
-                      </div>
-                      <div style={{ fontWeight: '700', color: '#166534', fontSize: '14px', wordBreak: 'break-all' }}>
-                        {driveFile.name}
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#4ade80', marginTop: '2px' }}>
-                        {formatBytes(driveFile.size)} · Click pentru a alege alt fișier
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div style={{ fontSize: '32px', marginBottom: '6px' }}>📤</div>
-                      <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '13px' }}>
-                        Click pentru a alege fișierul
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                        Word (.docx, .doc), Excel (.xlsx, .xls), PDF etc.
-                      </div>
-                    </div>
-                  )}
-                </div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
+                Locație: <strong>{currentFolder ? `📁 ${currentFolder.name}` : '🏠 Rădăcină'}</strong>
               </div>
 
-              {/* Titlu Document */}
+              {driveMode === 'LINK' ? (
+                /* ── Mode 1: URL input ── */
+                <div>
+                  <div style={{ marginBottom: '14px' }}>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+                      Link resursă Google Docs, Spreadsheet sau PDF *
+                    </label>
+                    <input
+                      type="url"
+                      required
+                      placeholder="ex: https://docs.google.com/document/d/... sau /spreadsheets/d/... sau link .pdf"
+                      value={driveUrl}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setDriveUrl(val);
+                        if (!driveTitle && val) {
+                          if (val.includes('document')) setDriveTitle('Document Google Docs');
+                          else if (val.includes('spreadsheets')) setDriveTitle('Centralizator Google Sheets');
+                          else if (val.toLowerCase().endsWith('.pdf')) setDriveTitle('Document PDF');
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '13px',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+
+                    {/* Detected Type Badge */}
+                    {liveDriveMeta && (
+                      <div
+                        style={{
+                          marginTop: '8px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          backgroundColor: liveDriveMeta.bg,
+                          color: liveDriveMeta.color,
+                          border: `1px solid ${liveDriveMeta.border}`,
+                        }}
+                      >
+                        <span>{liveDriveMeta.icon}</span>
+                        <span>{liveDriveMeta.label} detectat</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* ── Mode 2: PDF File Upload ── */
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '8px' }}>
+                    Selectează fișierul PDF *
+                  </label>
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      border: '2px dashed #cbd5e1',
+                      borderRadius: '8px',
+                      padding: '24px 16px',
+                      textAlign: 'center',
+                      cursor: 'pointer',
+                      backgroundColor: driveFile ? '#f0fdf4' : '#f8fafc',
+                      borderColor: driveFile ? '#86efac' : '#cbd5e1',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      onChange={handleDriveFileSelect}
+                      style={{ display: 'none' }}
+                    />
+                    {driveFile ? (
+                      <div>
+                        <div style={{ fontSize: '28px', marginBottom: '4px' }}>📑</div>
+                        <div style={{ fontWeight: '700', color: '#166534', fontSize: '14px', wordBreak: 'break-all' }}>
+                          {driveFile.name}
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#4ade80', marginTop: '2px' }}>
+                          {formatBytes(driveFile.size)} · Click pentru a schimba fișierul
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div style={{ fontSize: '32px', marginBottom: '6px' }}>📄</div>
+                        <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '13px' }}>
+                          Click pentru a alege un fișier PDF
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                          Doar fișiere .pdf (max 15MB)
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Titlu Resursă */}
               <div style={{ marginBottom: '20px' }}>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
                   Titlu afișat în platformă *
@@ -1299,7 +2668,7 @@ export default function KnowledgePage({ currentUser }) {
                 <input
                   type="text"
                   required
-                  placeholder="ex: Raport Financiar T4, Caiet de sarcini..."
+                  placeholder="ex: Specificații Tehnice, Centralizator Buget, Manual..."
                   value={driveTitle}
                   onChange={e => setDriveTitle(e.target.value)}
                   style={{
@@ -1333,7 +2702,7 @@ export default function KnowledgePage({ currentUser }) {
                 </button>
                 <button
                   type="submit"
-                  disabled={driveSaving || !driveFile}
+                  disabled={driveSaving || (driveMode === 'LINK' ? !driveUrl.trim() : !driveFile)}
                   style={{
                     padding: '9px 20px',
                     backgroundColor: '#5a3d5c',
@@ -1342,12 +2711,12 @@ export default function KnowledgePage({ currentUser }) {
                     borderRadius: '6px',
                     fontSize: '13px',
                     fontWeight: '700',
-                    cursor: driveSaving || !driveFile ? 'not-allowed' : 'pointer',
+                    cursor: driveSaving || (driveMode === 'LINK' ? !driveUrl.trim() : !driveFile) ? 'not-allowed' : 'pointer',
                     boxShadow: '0 2px 4px rgba(90, 61, 92, 0.25)',
-                    opacity: driveFile ? 1 : 0.6,
+                    opacity: (driveMode === 'LINK' ? driveUrl.trim() : driveFile) ? 1 : 0.6,
                   }}
                 >
-                  {driveSaving ? 'Se încarcă...' : 'Încarcă în Drive'}
+                  {driveSaving ? 'Se salvează...' : 'Adaugă resursa'}
                 </button>
               </div>
             </form>
@@ -1382,6 +2751,85 @@ export default function KnowledgePage({ currentUser }) {
         </div>
       )}
 
+      {/* ── Drag & Drop Floating Helper Bar ──────────────────────────── */}
+      {draggedElement && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: '#1e293b',
+            color: '#ffffff',
+            padding: '12px 22px',
+            borderRadius: '50px',
+            boxShadow: '0 12px 30px rgba(0,0,0,0.35)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            fontSize: '13px',
+            fontWeight: '600',
+            animation: 'fadeIn 0.15s ease',
+            border: '1px solid rgba(255,255,255,0.15)',
+          }}
+        >
+          <span style={{ fontSize: '18px' }}>
+            {draggedElement.type === 'FOLDER' ? '📁' : '📄'}
+          </span>
+          <span>
+            Tragi <strong>„{draggedElement.name}”</strong> — plasează-l peste un folder sau în bara de navigare de sus
+          </span>
+          <button
+            onClick={() => {
+              setDraggedElement(null);
+              setActiveDropTargetId(null);
+            }}
+            style={{
+              backgroundColor: 'rgba(255,255,255,0.18)',
+              border: 'none',
+              color: '#ffffff',
+              borderRadius: '20px',
+              padding: '5px 12px',
+              cursor: 'pointer',
+              fontSize: '11px',
+              fontWeight: '700',
+              marginLeft: '6px',
+              transition: 'background-color 0.12s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.28)')}
+            onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.18)')}
+          >
+            Anulează
+          </button>
+        </div>
+      )}
+
+      {/* ── Toast Notifications ──────────────────────────────────────── */}
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            backgroundColor: toast.type === 'error' ? '#ef4444' : toast.type === 'info' ? '#3b82f6' : '#10b981',
+            color: '#ffffff',
+            padding: '12px 20px',
+            borderRadius: '10px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+            zIndex: 10001,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            fontSize: '13px',
+            fontWeight: '600',
+            animation: 'fadeIn 0.2s ease',
+          }}
+        >
+          <span style={{ fontSize: '16px' }}>{toast.type === 'error' ? '❌' : toast.type === 'info' ? 'ℹ️' : '✅'}</span>
+          <span>{toast.text}</span>
+        </div>
+      )}
     </div>
   );
 }

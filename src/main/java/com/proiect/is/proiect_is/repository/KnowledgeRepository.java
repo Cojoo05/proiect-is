@@ -14,4 +14,8 @@ public interface KnowledgeRepository extends JpaRepository<KnowledgeNote, Long> 
     List<KnowledgeNote> findByCreatorIdOrderByCreatedAtDesc(Long creatorId);
 
     List<KnowledgeNote> findByCategoryIgnoreCaseOrderByIsPinnedDescCreatedAtDesc(String category);
+
+    List<KnowledgeNote> findByFolderId(Long folderId);
+
+    void deleteByFolderId(Long folderId);
 }
