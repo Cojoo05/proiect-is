@@ -151,6 +151,8 @@ public class CalendarEventController {
             if (updatedData.getLocation() != null) existing.setLocation(updatedData.getLocation());
             if (updatedData.getAttendees() != null) existing.setAttendees(updatedData.getAttendees());
             if (updatedData.getCompleted() != null) existing.setCompleted(updatedData.getCompleted());
+            if (updatedData.getIsDelayed() != null) existing.setIsDelayed(updatedData.getIsDelayed());
+            if (updatedData.getDelayReason() != null) existing.setDelayReason(updatedData.getDelayReason());
 
             CalendarEvent saved = calendarEventRepository.save(existing);
             return ResponseEntity.ok(saved);

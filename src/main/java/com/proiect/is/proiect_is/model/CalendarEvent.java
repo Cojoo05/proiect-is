@@ -72,6 +72,12 @@ public class CalendarEvent {
     private Long userId;
 
     @Column
+    private Boolean isDelayed = false;
+
+    @Column
+    private String delayReason;
+
+    @Column
     private LocalDateTime createdAt = LocalDateTime.now();
 
     public CalendarEvent() {
@@ -243,6 +249,22 @@ public class CalendarEvent {
 
     public void setUserId(Long userId) {
         this.userId = userId;
+    }
+
+    public Boolean getIsDelayed() {
+        return isDelayed;
+    }
+
+    public void setIsDelayed(Boolean isDelayed) {
+        this.isDelayed = isDelayed;
+    }
+
+    public String getDelayReason() {
+        return delayReason;
+    }
+
+    public void setDelayReason(String delayReason) {
+        this.delayReason = delayReason;
     }
 
     public LocalDateTime getCreatedAt() {
