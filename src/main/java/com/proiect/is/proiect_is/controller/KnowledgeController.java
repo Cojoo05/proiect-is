@@ -3,10 +3,12 @@ package com.proiect.is.proiect_is.controller;
 import com.proiect.is.proiect_is.model.KnowledgeCategory;
 import com.proiect.is.proiect_is.model.KnowledgeFolder;
 import com.proiect.is.proiect_is.model.KnowledgeNote;
+import com.proiect.is.proiect_is.model.SystemRole;
 import com.proiect.is.proiect_is.model.User;
 import com.proiect.is.proiect_is.repository.KnowledgeCategoryRepository;
 import com.proiect.is.proiect_is.repository.KnowledgeFolderRepository;
 import com.proiect.is.proiect_is.repository.KnowledgeRepository;
+import com.proiect.is.proiect_is.repository.SystemRoleRepository;
 import com.proiect.is.proiect_is.repository.UserRepository;
 import com.proiect.is.proiect_is.service.SystemRoleService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,24 +30,46 @@ public class KnowledgeController {
     private final KnowledgeFolderRepository folderRepository;
     private final UserRepository userRepository;
     private final SystemRoleService systemRoleService;
+    private final SystemRoleRepository systemRoleRepository;
 
     @Autowired
     public KnowledgeController(KnowledgeRepository knowledgeRepository,
                                KnowledgeCategoryRepository categoryRepository,
                                KnowledgeFolderRepository folderRepository,
                                UserRepository userRepository,
-                               SystemRoleService systemRoleService) {
+                               SystemRoleService systemRoleService,
+                               SystemRoleRepository systemRoleRepository) {
         this.knowledgeRepository = knowledgeRepository;
         this.categoryRepository = categoryRepository;
         this.folderRepository = folderRepository;
         this.userRepository = userRepository;
         this.systemRoleService = systemRoleService;
+        this.systemRoleRepository = systemRoleRepository;
     }
 
-    // --- FOLDERS: GET ALL ---
+    // --- FOLDERS: GET ALL ACCESSIBLE ---
     @GetMapping("/folders")
-    public ResponseEntity<List<KnowledgeFolder>> getFolders() {
-        return ResponseEntity.ok(folderRepository.findAllByOrderByNameAsc());
+    public ResponseEntity<List<KnowledgeFolder>> getFolders(@RequestParam(required = false) Long userId) {
+        List<KnowledgeFolder> allFolders = folderRepository.findAllByOrderByNameAsc();
+        if (userId == null) {
+            List<KnowledgeFolder> publicFolders = allFolders.stream()
+                    .filter(f -> isFolderVisibleToUser(f, null, "User", false))
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(publicFolders);
+        }
+
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        String userRole = user.getRole() != null ? user.getRole().trim() : "User";
+        boolean isAdmin = "Admin".equalsIgnoreCase(userRole) || systemRoleService.hasAdminAccess(userRole);
+
+        List<KnowledgeFolder> accessibleFolders = allFolders.stream()
+                .filter(f -> isFolderVisibleToUser(f, user, userRole, isAdmin))
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(accessibleFolders);
     }
 
     // --- FOLDERS: CREATE ---
@@ -61,22 +85,70 @@ public class KnowledgeController {
             return ResponseEntity.badRequest().body(Map.of("message", "Utilizatorul nu a fost găsit!"));
         }
 
+        String userRole = user.getRole() != null ? user.getRole().trim() : "User";
+        boolean isAdmin = "Admin".equalsIgnoreCase(userRole) || systemRoleService.hasAdminAccess(userRole);
+
         Long parentId = null;
         if (body.get("parentId") != null && !body.get("parentId").toString().isEmpty()) {
             parentId = Long.valueOf(body.get("parentId").toString());
         }
 
-        KnowledgeFolder folder = new KnowledgeFolder(name.trim(), parentId, user);
+        // Check Creation Permission:
+        KnowledgeFolder parent = null;
+        if (parentId == null) {
+            boolean canCreateRoot = isAdmin || systemRoleService.canCreateKnowledge(userRole);
+            if (!canCreateRoot) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("message", "Nu ai permisiunea de a crea foldere în Rădăcină! Doar rolurile autorizate din sistem pot crea aici."));
+            }
+        } else {
+            parent = folderRepository.findById(parentId).orElse(null);
+            if (parent == null) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Folderul părinte nu a fost găsit!"));
+            }
+            if (!canUserWriteInFolder(parent, user, userRole, isAdmin)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("message", "Nu ai permisiunea de a adăuga subfoldere în folderul '" + parent.getName() + "'!"));
+            }
+        }
+
+        String defaultView = (parent != null) ? parent.getAllowedRolesToView() : "ALL";
+        String allowedRolesToView = body.get("allowedRolesToView") != null && !body.get("allowedRolesToView").toString().trim().isEmpty()
+                ? body.get("allowedRolesToView").toString().trim()
+                : defaultView;
+        String allowedRolesToWrite = body.get("allowedRolesToWrite") != null && !body.get("allowedRolesToWrite").toString().trim().isEmpty()
+                ? body.get("allowedRolesToWrite").toString().trim()
+                : "ADMIN_CREATOR";
+        String allowedRolesToEdit = body.get("allowedRolesToEdit") != null && !body.get("allowedRolesToEdit").toString().trim().isEmpty()
+                ? body.get("allowedRolesToEdit").toString().trim()
+                : "ADMIN_CREATOR";
+
+        KnowledgeFolder folder = new KnowledgeFolder(name.trim(), parentId, user, allowedRolesToView, allowedRolesToWrite, allowedRolesToEdit);
         KnowledgeFolder saved = folderRepository.save(folder);
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
-    // --- FOLDERS: RENAME / UPDATE ---
+    // --- FOLDERS: RENAME / UPDATE PERMISSIONS / MOVE ---
     @PutMapping("/folders/{id}")
-    public ResponseEntity<?> renameFolder(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<?> renameFolder(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body,
+            @RequestParam(required = false) Long userId) {
         KnowledgeFolder folder = folderRepository.findById(id).orElse(null);
         if (folder == null) {
             return ResponseEntity.notFound().build();
+        }
+
+        if (userId != null) {
+            User user = userRepository.findById(userId).orElse(null);
+            if (user != null) {
+                String userRole = user.getRole() != null ? user.getRole().trim() : "User";
+                boolean isAdmin = "Admin".equalsIgnoreCase(userRole) || systemRoleService.hasAdminAccess(userRole);
+                if (!canUserEditFolder(folder, user, userRole, isAdmin)) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                            .body(Map.of("message", "Nu ai permisiunea de a edita acest folder!"));
+                }
+            }
         }
 
         if (body.containsKey("name")) {
@@ -84,6 +156,19 @@ public class KnowledgeController {
             if (name != null && !name.trim().isEmpty()) {
                 folder.setName(name.trim());
             }
+        }
+
+        if (body.containsKey("allowedRolesToView")) {
+            Object v = body.get("allowedRolesToView");
+            folder.setAllowedRolesToView(v != null ? v.toString().trim() : "ALL");
+        }
+        if (body.containsKey("allowedRolesToWrite")) {
+            Object w = body.get("allowedRolesToWrite");
+            folder.setAllowedRolesToWrite(w != null ? w.toString().trim() : "ADMIN_CREATOR");
+        }
+        if (body.containsKey("allowedRolesToEdit")) {
+            Object e = body.get("allowedRolesToEdit");
+            folder.setAllowedRolesToEdit(e != null ? e.toString().trim() : "ADMIN_CREATOR");
         }
 
         if (body.containsKey("parentId")) {
@@ -110,10 +195,25 @@ public class KnowledgeController {
 
     // --- FOLDERS: MOVE TO ANOTHER FOLDER / ROOT ---
     @PutMapping("/folders/{id}/move")
-    public ResponseEntity<?> moveFolder(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<?> moveFolder(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body,
+            @RequestParam(required = false) Long userId) {
         KnowledgeFolder folder = folderRepository.findById(id).orElse(null);
         if (folder == null) {
             return ResponseEntity.notFound().build();
+        }
+
+        if (userId != null) {
+            User user = userRepository.findById(userId).orElse(null);
+            if (user != null) {
+                String userRole = user.getRole() != null ? user.getRole().trim() : "User";
+                boolean isAdmin = "Admin".equalsIgnoreCase(userRole) || systemRoleService.hasAdminAccess(userRole);
+                if (!canUserEditFolder(folder, user, userRole, isAdmin)) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                            .body(Map.of("message", "Nu ai permisiunea de a muta acest folder!"));
+                }
+            }
         }
 
         Object pid = body.get("parentId");
@@ -152,10 +252,24 @@ public class KnowledgeController {
 
     // --- FOLDERS: DELETE (RECURSIVE) ---
     @DeleteMapping("/folders/{id}")
-    public ResponseEntity<?> deleteFolder(@PathVariable Long id) {
+    public ResponseEntity<?> deleteFolder(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long userId) {
         KnowledgeFolder folder = folderRepository.findById(id).orElse(null);
         if (folder == null) {
             return ResponseEntity.notFound().build();
+        }
+
+        if (userId != null) {
+            User user = userRepository.findById(userId).orElse(null);
+            if (user != null) {
+                String userRole = user.getRole() != null ? user.getRole().trim() : "User";
+                boolean isAdmin = "Admin".equalsIgnoreCase(userRole) || systemRoleService.hasAdminAccess(userRole);
+                if (!canUserEditFolder(folder, user, userRole, isAdmin)) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                            .body(Map.of("message", "Nu ai permisiunea de a șterge acest folder!"));
+                }
+            }
         }
 
         deleteFolderRecursive(id);
@@ -339,10 +453,30 @@ public class KnowledgeController {
         String userRole = creator.getRole() != null ? creator.getRole().trim() : "User";
         boolean isAdmin = "Admin".equalsIgnoreCase(userRole) || systemRoleService.hasAdminAccess(userRole);
 
-        // Check if role has permission to create knowledge notes
-        if (!isAdmin && !systemRoleService.canCreateKnowledge(userRole)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("message", "Rolul tău nu are permisiunea de a crea notițe în Knowledge!"));
+        Long folderId = null;
+        if (body.get("folderId") != null && !body.get("folderId").toString().isEmpty()) {
+            folderId = Long.valueOf(body.get("folderId").toString());
+        }
+
+        // Check if role has permission to create knowledge notes / files
+        if (folderId == null) {
+            if (!isAdmin && !systemRoleService.canCreateKnowledge(userRole)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("message", "Rolul tău nu are permisiunea de a adăuga conținut în Rădăcină!"));
+            }
+        } else {
+            KnowledgeFolder parent = folderRepository.findById(folderId).orElse(null);
+            if (parent == null) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Folderul destinație nu a fost găsit!"));
+            }
+            if (!canUserWriteInFolder(parent, creator, userRole, isAdmin)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("message", "Nu ai permisiunea de a adăuga conținut în folderul '" + parent.getName() + "'!"));
+            }
+            // Automatically inherit parent folder's view permissions if not explicitly set
+            if (body.get("allowedRolesToView") == null || body.get("allowedRolesToView").toString().trim().isEmpty()) {
+                allowedRolesToView = parent.getAllowedRolesToView();
+            }
         }
 
         KnowledgeNote note = new KnowledgeNote();
@@ -364,10 +498,6 @@ public class KnowledgeController {
         note.setAllowedUserIdsToView(allowedUserIdsToView != null ? allowedUserIdsToView.trim() : "");
         note.setAllowedRolesToEdit(allowedRolesToEdit != null && !allowedRolesToEdit.trim().isEmpty() ? allowedRolesToEdit.trim() : "ADMIN_CREATOR");
         note.setAllowedUserIdsToEdit(allowedUserIdsToEdit != null ? allowedUserIdsToEdit.trim() : "");
-        Long folderId = null;
-        if (body.get("folderId") != null && !body.get("folderId").toString().isEmpty()) {
-            folderId = Long.valueOf(body.get("folderId").toString());
-        }
         note.setFolderId(folderId);
 
         KnowledgeNote saved = knowledgeRepository.save(note);
@@ -457,10 +587,26 @@ public class KnowledgeController {
     @PutMapping("/{id}/move")
     public ResponseEntity<?> moveNote(
             @PathVariable Long id,
-            @RequestBody Map<String, Object> body) {
+            @RequestBody Map<String, Object> body,
+            @RequestParam(required = false) Long userId) {
         KnowledgeNote note = knowledgeRepository.findById(id).orElse(null);
         if (note == null) {
             return ResponseEntity.notFound().build();
+        }
+
+        if (userId != null) {
+            User user = userRepository.findById(userId).orElse(null);
+            if (user != null) {
+                String userRole = user.getRole() != null ? user.getRole().trim() : "User";
+                boolean isAdmin = "Admin".equalsIgnoreCase(userRole) || systemRoleService.hasAdminAccess(userRole);
+                boolean isCreator = note.getCreator() != null && note.getCreator().getId().equals(userId);
+                boolean isUserIdAllowedToEdit = isUserIdAllowed(note.getAllowedUserIdsToEdit(), userId);
+                boolean isRoleAllowedToEdit = isRoleAllowed(note.getAllowedRolesToEdit(), userRole);
+                if (!isAdmin && !isCreator && !isUserIdAllowedToEdit && !isRoleAllowedToEdit) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                            .body(Map.of("message", "Nu ai permisiunea de a muta această notiță!"));
+                }
+            }
         }
 
         Object fid = body.get("folderId");
@@ -533,9 +679,11 @@ public class KnowledgeController {
         }
     }
 
-    // --- CHECK USER PERMISSION TO CREATE NOTES ---
+    // --- CHECK USER PERMISSIONS FOR KNOWLEDGE / ROOT / FOLDER ---
     @GetMapping("/permissions")
-    public ResponseEntity<Map<String, Object>> getPermissions(@RequestParam Long userId) {
+    public ResponseEntity<Map<String, Object>> getPermissions(
+            @RequestParam Long userId,
+            @RequestParam(required = false) Long folderId) {
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) {
             return ResponseEntity.badRequest().build();
@@ -543,22 +691,138 @@ public class KnowledgeController {
 
         String userRole = user.getRole() != null ? user.getRole().trim() : "User";
         boolean isAdmin = "Admin".equalsIgnoreCase(userRole) || systemRoleService.hasAdminAccess(userRole);
-        boolean canCreate = isAdmin || systemRoleService.canCreateKnowledge(userRole);
+        boolean canCreateRoot = isAdmin || systemRoleService.canCreateKnowledge(userRole);
+
+        boolean canWrite = canCreateRoot;
+        boolean canEdit = isAdmin;
+        boolean isCreator = false;
+
+        if (folderId != null) {
+            KnowledgeFolder folder = folderRepository.findById(folderId).orElse(null);
+            if (folder != null) {
+                canWrite = canUserWriteInFolder(folder, user, userRole, isAdmin);
+                canEdit = canUserEditFolder(folder, user, userRole, isAdmin);
+                isCreator = folder.getCreator() != null && folder.getCreator().getId().equals(userId);
+            }
+        }
+
+        List<String> systemRoles = systemRoleRepository.findAll().stream()
+                .map(SystemRole::getName)
+                .filter(name -> name != null && !name.trim().isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
+        if (systemRoles.isEmpty()) {
+            systemRoles = List.of("Admin", "User");
+        }
 
         Map<String, Object> perms = new HashMap<>();
-        perms.put("canCreate", canCreate);
+        perms.put("canCreate", canWrite); // Backward compatibility
+        perms.put("canCreateRoot", canCreateRoot);
+        perms.put("canWrite", canWrite);
+        perms.put("canEdit", canEdit);
         perms.put("isAdmin", isAdmin);
+        perms.put("isCreator", isCreator);
         perms.put("role", userRole);
+        perms.put("systemRoles", systemRoles);
         return ResponseEntity.ok(perms);
+    }
+
+    // --- HELPER: CHECK IF SINGLE FOLDER IS VISIBLE ---
+    private boolean isSingleFolderVisible(KnowledgeFolder folder, User user, String userRole, boolean isAdmin) {
+        if (isAdmin) return true;
+        if (user != null && folder.getCreator() != null && folder.getCreator().getId().equals(user.getId())) {
+            return true;
+        }
+
+        String allowed = folder.getAllowedRolesToView();
+        if (allowed == null || allowed.trim().isEmpty() || "ALL".equalsIgnoreCase(allowed.trim())) {
+            return true;
+        }
+
+        return isRoleAllowed(allowed, userRole);
+    }
+
+    // --- HELPER: CHECK IF FOLDER IS VISIBLE (INHERITANCE FROM ALL ANCESTORS) ---
+    private boolean isFolderVisibleToUser(KnowledgeFolder folder, User user, String userRole, boolean isAdmin) {
+        if (folder == null) return true;
+        if (isAdmin) return true;
+        if (!isSingleFolderVisible(folder, user, userRole, isAdmin)) {
+            return false;
+        }
+
+        Long currParentId = folder.getParentId();
+        Set<Long> visited = new HashSet<>();
+        visited.add(folder.getId());
+
+        while (currParentId != null) {
+            if (visited.contains(currParentId)) break;
+            visited.add(currParentId);
+
+            KnowledgeFolder parent = folderRepository.findById(currParentId).orElse(null);
+            if (parent == null) break;
+            if (!isSingleFolderVisible(parent, user, userRole, isAdmin)) {
+                return false;
+            }
+            currParentId = parent.getParentId();
+        }
+
+        return true;
+    }
+
+    // --- HELPER: CHECK IF USER CAN WRITE IN FOLDER ---
+    private boolean canUserWriteInFolder(KnowledgeFolder folder, User user, String userRole, boolean isAdmin) {
+        if (isAdmin) return true;
+        if (user != null && folder.getCreator() != null && folder.getCreator().getId().equals(user.getId())) {
+            return true;
+        }
+
+        String allowed = folder.getAllowedRolesToWrite();
+        if (allowed == null || allowed.trim().isEmpty() || "ADMIN_CREATOR".equalsIgnoreCase(allowed.trim())) {
+            return false;
+        }
+        if ("ALL".equalsIgnoreCase(allowed.trim())) {
+            return true;
+        }
+
+        return isRoleAllowed(allowed, userRole);
+    }
+
+    // --- HELPER: CHECK IF USER CAN EDIT FOLDER ---
+    private boolean canUserEditFolder(KnowledgeFolder folder, User user, String userRole, boolean isAdmin) {
+        if (isAdmin) return true;
+        if (user != null && folder.getCreator() != null && folder.getCreator().getId().equals(user.getId())) {
+            return true;
+        }
+
+        String allowed = folder.getAllowedRolesToEdit();
+        if (allowed == null || allowed.trim().isEmpty() || "ADMIN_CREATOR".equalsIgnoreCase(allowed.trim())) {
+            return false;
+        }
+        if ("ALL".equalsIgnoreCase(allowed.trim())) {
+            return true;
+        }
+
+        return isRoleAllowed(allowed, userRole);
     }
 
     // --- HELPER: CHECK IF NOTE IS VISIBLE TO USER ---
     private boolean isNoteVisibleToUser(KnowledgeNote note, User user, String userRole, boolean isAdmin) {
         if (isAdmin) return true;
-        if (note.getCreator() != null && note.getCreator().getId().equals(user.getId())) return true;
+
+        // Parent folder visibility check (if any ancestor is hidden, note is hidden)
+        if (note.getFolderId() != null) {
+            KnowledgeFolder parentFolder = folderRepository.findById(note.getFolderId()).orElse(null);
+            if (parentFolder != null && !isFolderVisibleToUser(parentFolder, user, userRole, isAdmin)) {
+                return false;
+            }
+        }
+
+        if (user != null && note.getCreator() != null && note.getCreator().getId().equals(user.getId())) {
+            return true;
+        }
 
         // Check if specific user is allowed
-        if (isUserIdAllowed(note.getAllowedUserIdsToView(), user.getId())) {
+        if (user != null && isUserIdAllowed(note.getAllowedUserIdsToView(), user.getId())) {
             return true;
         }
 

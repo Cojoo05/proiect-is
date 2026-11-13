@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+﻿import { useState, useEffect, useRef, useMemo } from 'react';
 import { API_BASE_URL } from '../config';
 
 // Extract YouTube ID from text or link
@@ -130,6 +130,27 @@ export default function KnowledgePage({ currentUser }) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
+  // Permissions state
+  const [permissions, setPermissions] = useState({
+    canCreateRoot: false,
+    canWrite: false,
+    canEdit: false,
+    isAdmin: false,
+    isCreator: false,
+    role: 'User',
+    systemRoles: ['Admin', 'User'],
+  });
+
+  // Folder Permissions Form State
+  const [folderViewMode, setFolderViewMode] = useState('ALL'); // 'ALL' | 'CUSTOM'
+  const [folderViewRoles, setFolderViewRoles] = useState(['Admin']);
+  const [folderWriteRoles, setFolderWriteRoles] = useState(['Admin']);
+  const [folderEditRoles, setFolderEditRoles] = useState(['Admin']);
+
+  // Note / Drive Item Permissions State
+  const [itemRestrictedView, setItemRestrictedView] = useState(false);
+  const [itemAllowedRoles, setItemAllowedRoles] = useState(['Admin']);
+
   // Modals
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
@@ -166,14 +187,33 @@ export default function KnowledgePage({ currentUser }) {
 
   const API = `${API_BASE_URL}/api/knowledge`;
 
-  // Fetch all items and folders
+  // Fetch permissions for current user and current folder level
+  const fetchPermissions = async () => {
+    if (!currentUser?.id) return;
+    try {
+      const folderParam = currentFolderId ? `&folderId=${currentFolderId}` : '';
+      const res = await fetch(`${API}/permissions?userId=${currentUser.id}${folderParam}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPermissions(data);
+      }
+    } catch (err) {
+      console.error('Eroare la încărcarea permisiunilor:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchPermissions();
+  }, [currentUser?.id, currentFolderId]);
+
+  // Fetch all items and folders accessible to user
   const fetchData = async (silent = false) => {
     if (!silent) setLoading(true);
     const userIdParam = currentUser?.id ? `?userId=${currentUser.id}` : '';
     try {
       const [itemsRes, foldersRes] = await Promise.all([
         fetch(`${API}${userIdParam}`).then(r => r.ok ? r.json() : []),
-        fetch(`${API}/folders`).then(r => r.ok ? r.json() : []),
+        fetch(`${API}/folders${userIdParam}`).then(r => r.ok ? r.json() : []),
       ]);
       setItems(Array.isArray(itemsRes) ? itemsRes : []);
       setFolders(Array.isArray(foldersRes) ? foldersRes : []);
@@ -187,6 +227,38 @@ export default function KnowledgePage({ currentUser }) {
   useEffect(() => {
     fetchData();
   }, [currentUser?.id]);
+
+  // Permission helpers
+  const canEditFolder = (f) => {
+    if (!f || !currentUser) return false;
+    if (permissions.isAdmin) return true;
+    if (f.creator?.id === currentUser.id) return true;
+    const allowedEdit = f.allowedRolesToEdit;
+    if (allowedEdit === 'ALL') return true;
+    if (!allowedEdit || allowedEdit === 'ADMIN_CREATOR') return false;
+    const userRole = (currentUser.role || 'User').trim().toLowerCase();
+    return allowedEdit.split(',').some(r => r.trim().toLowerCase() === userRole);
+  };
+
+  const canEditItem = (item) => {
+    if (!item || !currentUser) return false;
+    if (permissions.isAdmin) return true;
+    if (item.creator?.id === currentUser.id) return true;
+    const allowedEdit = item.allowedRolesToEdit;
+    if (allowedEdit === 'ALL') return true;
+    if (!allowedEdit || allowedEdit === 'ADMIN_CREATOR') return false;
+    const userRole = (currentUser.role || 'User').trim().toLowerCase();
+    return allowedEdit.split(',').some(r => r.trim().toLowerCase() === userRole);
+  };
+
+  const toggleRoleInList = (roleName, currentList, setList) => {
+    if (roleName === 'Admin') return; // Admin always included
+    if (currentList.includes(roleName)) {
+      setList(currentList.filter(r => r !== roleName));
+    } else {
+      setList([...currentList, roleName]);
+    }
+  };
 
   // Click outside add menu
   useEffect(() => {
@@ -429,25 +501,76 @@ export default function KnowledgePage({ currentUser }) {
     }
   };
 
+  // Open New Folder Modal
+  const openNewFolderModal = () => {
+    setFolderNameInput('');
+    setRenamingFolder(null);
+    if (currentFolder && currentFolder.allowedRolesToView && currentFolder.allowedRolesToView !== 'ALL') {
+      setFolderViewMode('CUSTOM');
+      setFolderViewRoles(currentFolder.allowedRolesToView.split(',').map(r => r.trim()).filter(Boolean));
+    } else {
+      setFolderViewMode('ALL');
+      setFolderViewRoles(permissions.systemRoles || ['Admin', 'User']);
+    }
+    setFolderWriteRoles(['Admin']);
+    setFolderEditRoles(['Admin']);
+    setIsFolderModalOpen(true);
+  };
+
+  // Open Edit Folder Modal
+  const openEditFolderModal = (folder) => {
+    setRenamingFolder(folder);
+    setFolderNameInput(folder.name || '');
+    if (folder.allowedRolesToView === 'ALL' || !folder.allowedRolesToView) {
+      setFolderViewMode('ALL');
+      setFolderViewRoles(permissions.systemRoles || ['Admin', 'User']);
+    } else {
+      setFolderViewMode('CUSTOM');
+      setFolderViewRoles(folder.allowedRolesToView.split(',').map(r => r.trim()).filter(Boolean));
+    }
+
+    if (folder.allowedRolesToWrite === 'ADMIN_CREATOR' || !folder.allowedRolesToWrite) {
+      setFolderWriteRoles(['Admin']);
+    } else if (folder.allowedRolesToWrite === 'ALL') {
+      setFolderWriteRoles(permissions.systemRoles || ['Admin', 'User']);
+    } else {
+      setFolderWriteRoles(folder.allowedRolesToWrite.split(',').map(r => r.trim()).filter(Boolean));
+    }
+
+    if (folder.allowedRolesToEdit === 'ADMIN_CREATOR' || !folder.allowedRolesToEdit) {
+      setFolderEditRoles(['Admin']);
+    } else if (folder.allowedRolesToEdit === 'ALL') {
+      setFolderEditRoles(permissions.systemRoles || ['Admin', 'User']);
+    } else {
+      setFolderEditRoles(folder.allowedRolesToEdit.split(',').map(r => r.trim()).filter(Boolean));
+    }
+  };
+
   // Create Folder
   const handleCreateFolder = async (e) => {
     e.preventDefault();
     if (!folderNameInput.trim()) return;
 
+    const payload = {
+      name: folderNameInput.trim(),
+      parentId: currentFolderId,
+      allowedRolesToView: folderViewMode === 'ALL' ? 'ALL' : (folderViewRoles.length > 0 ? folderViewRoles.join(',') : 'Admin'),
+      allowedRolesToWrite: folderWriteRoles.length > 0 ? folderWriteRoles.join(',') : 'ADMIN_CREATOR',
+      allowedRolesToEdit: folderEditRoles.length > 0 ? folderEditRoles.join(',') : 'ADMIN_CREATOR',
+    };
+
     try {
-      const res = await fetch(`${API}/folders?userId=${currentUser?.id || 32}`, {
+      const res = await fetch(`${API}/folders?userId=${currentUser?.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: folderNameInput.trim(),
-          parentId: currentFolderId,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
         setIsFolderModalOpen(false);
         setFolderNameInput('');
         fetchData(true);
+        fetchPermissions();
       } else {
         const data = await res.json().catch(() => ({}));
         alert(data.message || 'Eroare la crearea folderului!');
@@ -458,25 +581,33 @@ export default function KnowledgePage({ currentUser }) {
     }
   };
 
-  // Rename Folder
+  // Rename / Update Folder Permissions
   const handleRenameFolder = async (e) => {
     e.preventDefault();
     if (!renamingFolder || !folderNameInput.trim()) return;
 
+    const payload = {
+      name: folderNameInput.trim(),
+      allowedRolesToView: folderViewMode === 'ALL' ? 'ALL' : (folderViewRoles.length > 0 ? folderViewRoles.join(',') : 'Admin'),
+      allowedRolesToWrite: folderWriteRoles.length > 0 ? folderWriteRoles.join(',') : 'ADMIN_CREATOR',
+      allowedRolesToEdit: folderEditRoles.length > 0 ? folderEditRoles.join(',') : 'ADMIN_CREATOR',
+    };
+
     try {
-      const res = await fetch(`${API}/folders/${renamingFolder.id}`, {
+      const res = await fetch(`${API}/folders/${renamingFolder.id}?userId=${currentUser?.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: folderNameInput.trim() }),
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
         setRenamingFolder(null);
         setFolderNameInput('');
         fetchData(true);
+        fetchPermissions();
       } else {
         const data = await res.json().catch(() => ({}));
-        alert(data.message || 'Eroare la redenumire!');
+        alert(data.message || 'Eroare la salvarea modificărilor folderului!');
       }
     } catch (err) {
       console.error(err);
@@ -495,12 +626,13 @@ export default function KnowledgePage({ currentUser }) {
     if (!window.confirm(warning)) return;
 
     try {
-      const res = await fetch(`${API}/folders/${folder.id}`, { method: 'DELETE' });
+      const res = await fetch(`${API}/folders/${folder.id}?userId=${currentUser?.id}`, { method: 'DELETE' });
       if (res.ok) {
         if (currentFolderId === folder.id) {
           setCurrentFolderId(folder.parentId || null);
         }
         fetchData(true);
+        fetchPermissions();
       } else {
         const data = await res.json().catch(() => ({}));
         alert(data.message || 'Eroare la ștergerea folderului!');
@@ -546,6 +678,9 @@ export default function KnowledgePage({ currentUser }) {
         creatorId: currentUser?.id,
         category: 'Notițe',
         folderId: currentFolderId,
+        allowedRolesToView: itemRestrictedView
+          ? (itemAllowedRoles.length > 0 ? itemAllowedRoles.join(',') : 'Admin')
+          : (currentFolder ? null : 'ALL'),
       };
 
       const url = editingId ? `${API}/${editingId}?userId=${currentUser?.id}` : API;
@@ -563,6 +698,7 @@ export default function KnowledgePage({ currentUser }) {
         setNoteContent('');
         setNoteImages([]);
         setEditingId(null);
+        setItemRestrictedView(false);
         fetchData(true);
       } else {
         const data = await res.json().catch(() => ({}));
@@ -629,6 +765,9 @@ export default function KnowledgePage({ currentUser }) {
           creatorId: currentUser?.id,
           category: 'Drive',
           folderId: currentFolderId,
+          allowedRolesToView: itemRestrictedView
+            ? (itemAllowedRoles.length > 0 ? itemAllowedRoles.join(',') : 'Admin')
+            : (currentFolder ? null : 'ALL'),
         };
       } else {
         payload = {
@@ -642,6 +781,9 @@ export default function KnowledgePage({ currentUser }) {
           creatorId: currentUser?.id,
           category: 'Drive',
           folderId: currentFolderId,
+          allowedRolesToView: itemRestrictedView
+            ? (itemAllowedRoles.length > 0 ? itemAllowedRoles.join(',') : 'Admin')
+            : (currentFolder ? null : 'ALL'),
         };
       }
 
@@ -656,6 +798,7 @@ export default function KnowledgePage({ currentUser }) {
         setDriveTitle('');
         setDriveUrl('');
         setDriveFile(null);
+        setItemRestrictedView(false);
         fetchData(true);
       } else {
         const data = await res.json().catch(() => ({}));
@@ -763,6 +906,13 @@ export default function KnowledgePage({ currentUser }) {
       imgs = note.imagesJson ? JSON.parse(note.imagesJson) : [];
     } catch (_) {}
     setNoteImages(imgs);
+    if (note.allowedRolesToView && note.allowedRolesToView !== 'ALL') {
+      setItemRestrictedView(true);
+      setItemAllowedRoles(note.allowedRolesToView.split(',').map(r => r.trim()).filter(Boolean));
+    } else {
+      setItemRestrictedView(false);
+      setItemAllowedRoles(permissions.systemRoles || ['Admin']);
+    }
     setIsNoteModalOpen(true);
   };
 
@@ -809,31 +959,53 @@ export default function KnowledgePage({ currentUser }) {
 
         {/* Action Button: Add dropdown */}
         <div style={{ position: 'relative' }} ref={addMenuRef}>
-          <button
-            onClick={() => setShowAddMenu(prev => !prev)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 18px',
-              backgroundColor: '#5a3d5c',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: '700',
-              cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(90, 61, 92, 0.25)',
-              transition: 'background-color 0.15s ease, transform 0.1s ease',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#472f48')}
-            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#5a3d5c')}
-          >
-            <span>➕ Adaugă</span>
-            <span style={{ fontSize: '11px' }}>▼</span>
-          </button>
+          {permissions.canWrite ? (
+            <button
+              onClick={() => setShowAddMenu(prev => !prev)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 18px',
+                backgroundColor: '#5a3d5c',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(90, 61, 92, 0.25)',
+                transition: 'background-color 0.15s ease, transform 0.1s ease',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#472f48')}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#5a3d5c')}
+            >
+              <span>➕ Adaugă</span>
+              <span style={{ fontSize: '11px' }}>▼</span>
+            </button>
+          ) : (
+            <div
+              title={currentFolder ? "Nu ai permisiunea de a adăuga conținut în acest folder." : "Doar rolurile cu drept de creare pot adăuga elemente în Rădăcină."}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 18px',
+                backgroundColor: '#f1f5f9',
+                color: '#94a3b8',
+                border: '1px dashed #cbd5e1',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: '600',
+                cursor: 'not-allowed',
+                userSelect: 'none',
+              }}
+            >
+              <span>🔒 Fără drept de adăugare</span>
+            </div>
+          )}
 
-          {showAddMenu && (
+          {showAddMenu && permissions.canWrite && (
             <div
               style={{
                 position: 'absolute',
@@ -853,8 +1025,7 @@ export default function KnowledgePage({ currentUser }) {
               <button
                 onClick={() => {
                   setShowAddMenu(false);
-                  setFolderNameInput('');
-                  setIsFolderModalOpen(true);
+                  openNewFolderModal();
                 }}
                 style={{
                   display: 'flex',
@@ -893,6 +1064,8 @@ export default function KnowledgePage({ currentUser }) {
                   setDriveUrl('');
                   setDriveTitle('');
                   setDriveFile(null);
+                  setItemRestrictedView(false);
+                  setItemAllowedRoles(permissions.systemRoles || ['Admin']);
                   setIsDriveModalOpen(true);
                 }}
                 style={{
@@ -930,6 +1103,8 @@ export default function KnowledgePage({ currentUser }) {
                   setNoteTitle('');
                   setNoteContent('');
                   setNoteImages([]);
+                  setItemRestrictedView(false);
+                  setItemAllowedRoles(permissions.systemRoles || ['Admin']);
                   setIsNoteModalOpen(true);
                 }}
                 style={{
@@ -1269,9 +1444,23 @@ export default function KnowledgePage({ currentUser }) {
                           >
                             {folder.name}
                           </div>
-                          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
-                            {counts.subCount > 0 && `${counts.subCount} foldere · `}
-                            {counts.itCount} {counts.itCount === 1 ? 'element' : 'elemente'}
+                          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>{counts.subCount > 0 ? `${counts.subCount} foldere · ` : ''}{counts.itCount} {counts.itCount === 1 ? 'element' : 'elemente'}</span>
+                            {folder.allowedRolesToView && folder.allowedRolesToView !== 'ALL' && (
+                              <span
+                                title={`Vizibilitate restrânsă doar pentru: ${folder.allowedRolesToView}`}
+                                style={{
+                                  backgroundColor: '#fef3c7',
+                                  color: '#b45309',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  fontSize: '10px',
+                                  fontWeight: '700',
+                                }}
+                              >
+                                🔒 {folder.allowedRolesToView}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1294,45 +1483,46 @@ export default function KnowledgePage({ currentUser }) {
                         >
                           ⋮⋮
                         </span>
-                        <button
-                          draggable={false}
-                          onMouseDown={e => e.stopPropagation()}
-                          onClick={() => {
-                            setRenamingFolder(folder);
-                            setFolderNameInput(folder.name);
-                          }}
-                          title="Redenumește folderul"
-                          style={{
-                            border: 'none',
-                            background: 'transparent',
-                            color: '#94a3b8',
-                            cursor: 'pointer',
-                            padding: '4px',
-                            fontSize: '13px',
-                          }}
-                          onMouseEnter={e => (e.currentTarget.style.color = '#5a3d5c')}
-                          onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          draggable={false}
-                          onMouseDown={e => e.stopPropagation()}
-                          onClick={(e) => handleDeleteFolder(folder, e)}
-                          title="Șterge folderul"
-                          style={{
-                            border: 'none',
-                            background: 'transparent',
-                            color: '#94a3b8',
-                            cursor: 'pointer',
-                            padding: '4px',
-                            fontSize: '13px',
-                          }}
-                          onMouseEnter={e => (e.currentTarget.style.color = '#dc2626')}
-                          onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
-                        >
-                          🗑️
-                        </button>
+                        {canEditFolder(folder) && (
+                          <>
+                            <button
+                              draggable={false}
+                              onMouseDown={e => e.stopPropagation()}
+                              onClick={() => openEditFolderModal(folder)}
+                              title="Editează nume și permisiuni folder"
+                              style={{
+                                border: 'none',
+                                background: 'transparent',
+                                color: '#94a3b8',
+                                cursor: 'pointer',
+                                padding: '4px',
+                                fontSize: '13px',
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.color = '#5a3d5c')}
+                              onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              draggable={false}
+                              onMouseDown={e => e.stopPropagation()}
+                              onClick={(e) => handleDeleteFolder(folder, e)}
+                              title="Șterge folderul"
+                              style={{
+                                border: 'none',
+                                background: 'transparent',
+                                color: '#94a3b8',
+                                cursor: 'pointer',
+                                padding: '4px',
+                                fontSize: '13px',
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.color = '#dc2626')}
+                              onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
+                            >
+                              🗑️
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   );
@@ -1503,6 +1693,26 @@ export default function KnowledgePage({ currentUser }) {
                               </span>
                             )}
 
+                            {item.allowedRolesToView && item.allowedRolesToView !== 'ALL' && (
+                              <span
+                                title={`Vizibilitate restrânsă doar pentru: ${item.allowedRolesToView}`}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                  backgroundColor: '#fef3c7',
+                                  color: '#b45309',
+                                  border: '1px solid #fde68a',
+                                }}
+                              >
+                                🔒 {item.allowedRolesToView}
+                              </span>
+                            )}
+
                             {parentF && (
                               <span
                                 draggable={false}
@@ -1550,25 +1760,27 @@ export default function KnowledgePage({ currentUser }) {
                             >
                               ⋮⋮
                             </span>
-                            <button
-                              draggable={false}
-                              onMouseDown={e => e.stopPropagation()}
-                              onClick={(e) => handleDelete(item, e)}
-                              title="Șterge"
-                              style={{
-                                border: 'none',
-                                backgroundColor: 'transparent',
-                                color: '#94a3b8',
-                                cursor: 'pointer',
-                                padding: '4px',
-                                borderRadius: '4px',
-                                fontSize: '14px',
-                              }}
-                              onMouseEnter={e => (e.currentTarget.style.color = '#dc2626')}
-                              onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
-                            >
-                              🗑️
-                            </button>
+                        {canEditItem(item) && (
+                          <button
+                            draggable={false}
+                            onMouseDown={e => e.stopPropagation()}
+                            onClick={(e) => handleDelete(item, e)}
+                            title="Șterge"
+                            style={{
+                              border: 'none',
+                              backgroundColor: 'transparent',
+                              color: '#94a3b8',
+                              cursor: 'pointer',
+                              padding: '4px',
+                              borderRadius: '4px',
+                              fontSize: '14px',
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.color = '#dc2626')}
+                            onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
+                          >
+                            🗑️
+                          </button>
+                        )}
                           </div>
                         </div>
 
@@ -1835,8 +2047,8 @@ export default function KnowledgePage({ currentUser }) {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {viewingItem.itemType !== 'DRIVE' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {canEditItem(viewingItem) && viewingItem.itemType !== 'DRIVE' && (
                   <button
                     onClick={() => {
                       const it = viewingItem;
@@ -1855,6 +2067,26 @@ export default function KnowledgePage({ currentUser }) {
                     }}
                   >
                     ✏️ Editează
+                  </button>
+                )}
+                {canEditItem(viewingItem) && (
+                  <button
+                    onClick={() => {
+                      const it = viewingItem;
+                      handleDelete(it);
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      backgroundColor: '#fef2f2',
+                      color: '#dc2626',
+                      border: '1px solid #fecaca',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    🗑️ Șterge
                   </button>
                 )}
                 <button
@@ -2106,7 +2338,9 @@ export default function KnowledgePage({ currentUser }) {
               backgroundColor: '#ffffff',
               borderRadius: '12px',
               width: '100%',
-              maxWidth: '420px',
+              maxWidth: '520px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
               padding: '24px',
               boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
               textAlign: 'left',
@@ -2114,7 +2348,7 @@ export default function KnowledgePage({ currentUser }) {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#1e293b', fontWeight: '800' }}>
-                {renamingFolder ? '✏️ Redenumește folderul' : '📁 Creează Folder Nou'}
+                {renamingFolder ? '✏️ Editează Folder & Permisiuni' : '📁 Creează Folder Nou'}
               </h3>
               <button
                 onClick={() => {
@@ -2142,7 +2376,7 @@ export default function KnowledgePage({ currentUser }) {
                 </div>
               )}
 
-              <div style={{ marginBottom: '18px' }}>
+              <div style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
                   Nume folder *
                 </label>
@@ -2164,7 +2398,162 @@ export default function KnowledgePage({ currentUser }) {
                 />
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              {/* Permission Settings */}
+              <div style={{ marginTop: '16px', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '16px' }}>🔐</span>
+                  <span style={{ fontSize: '13px', fontWeight: '800', color: '#1e293b' }}>
+                    Permisiuni & Drepturi pe Roluri
+                  </span>
+                </div>
+
+                {/* 1. View Permission */}
+                <div style={{ marginBottom: '14px', backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+                    👁️ Cine poate vedea folderul și conținutul său?
+                  </label>
+                  <div style={{ display: 'flex', gap: '16px', marginBottom: '8px', fontSize: '13px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="folderViewMode"
+                        checked={folderViewMode === 'ALL'}
+                        onChange={() => setFolderViewMode('ALL')}
+                      />
+                      <span>Toate rolurile</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="folderViewMode"
+                        checked={folderViewMode === 'CUSTOM'}
+                        onChange={() => setFolderViewMode('CUSTOM')}
+                      />
+                      <span>Doar rolurile selectate</span>
+                    </label>
+                  </div>
+                  {folderViewMode === 'CUSTOM' && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
+                      {permissions.systemRoles.map(role => {
+                        const isAdminRole = role.toLowerCase() === 'admin';
+                        const isChecked = isAdminRole || folderViewRoles.includes(role);
+                        return (
+                          <label
+                            key={role}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              backgroundColor: isChecked ? '#eff6ff' : '#ffffff',
+                              border: `1px solid ${isChecked ? '#93c5fd' : '#cbd5e1'}`,
+                              fontSize: '12px',
+                              cursor: isAdminRole ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              disabled={isAdminRole}
+                              onChange={() => toggleRoleInList(role, folderViewRoles, setFolderViewRoles)}
+                            />
+                            <span>{role}</span>
+                            {isAdminRole && <span style={{ fontSize: '10px', color: '#64748b' }}>(Implicit)</span>}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                    * Utilizatorii fără acces nu vor vedea deloc acest folder sau fișierele din interior.
+                  </div>
+                </div>
+
+                {/* 2. Write Permission */}
+                <div style={{ marginBottom: '14px', backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                    ✍️ Cine poate adăuga conținut (fișiere / subfoldere)?
+                  </label>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '11px', color: '#64748b' }}>
+                    Rolurile selectate pot adăuga conținut în acest folder chiar dacă nu au drept de creare în sistem.
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {permissions.systemRoles.map(role => {
+                      const isAdminRole = role.toLowerCase() === 'admin';
+                      const isChecked = isAdminRole || folderWriteRoles.includes(role);
+                      return (
+                        <label
+                          key={role}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            backgroundColor: isChecked ? '#f0fdf4' : '#ffffff',
+                            border: `1px solid ${isChecked ? '#86efac' : '#cbd5e1'}`,
+                            fontSize: '12px',
+                            cursor: isAdminRole ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            disabled={isAdminRole}
+                            onChange={() => toggleRoleInList(role, folderWriteRoles, setFolderWriteRoles)}
+                          />
+                          <span>{role}</span>
+                          {isAdminRole && <span style={{ fontSize: '10px', color: '#64748b' }}>(Implicit)</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 3. Edit Permission */}
+                <div style={{ marginBottom: '16px', backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                    ⚙️ Cine poate edita sau șterge folderul?
+                  </label>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '11px', color: '#64748b' }}>
+                    Creatorul și Administratorii au întotdeauna acces de editare și administrare.
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {permissions.systemRoles.map(role => {
+                      const isAdminRole = role.toLowerCase() === 'admin';
+                      const isChecked = isAdminRole || folderEditRoles.includes(role);
+                      return (
+                        <label
+                          key={role}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            backgroundColor: isChecked ? '#faf5ff' : '#ffffff',
+                            border: `1px solid ${isChecked ? '#d8b4fe' : '#cbd5e1'}`,
+                            fontSize: '12px',
+                            cursor: isAdminRole ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            disabled={isAdminRole}
+                            onChange={() => toggleRoleInList(role, folderEditRoles, setFolderEditRoles)}
+                          />
+                          <span>{role}</span>
+                          {isAdminRole && <span style={{ fontSize: '10px', color: '#64748b' }}>(Implicit)</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '16px' }}>
                 <button
                   type="button"
                   onClick={() => {
@@ -2198,7 +2587,7 @@ export default function KnowledgePage({ currentUser }) {
                     cursor: 'pointer',
                   }}
                 >
-                  {renamingFolder ? 'Salvează' : 'Creează Folder'}
+                  {renamingFolder ? 'Salvează Modificările' : 'Creează Folder'}
                 </button>
               </div>
             </form>
@@ -2407,6 +2796,65 @@ export default function KnowledgePage({ currentUser }) {
                         </button>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Optional Visibility Restriction */}
+              <div style={{ marginBottom: '18px', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <input
+                      type="checkbox"
+                      checked={itemRestrictedView}
+                      onChange={e => setItemRestrictedView(e.target.checked)}
+                    />
+                    <span>🔒 Restrânge vizibilitatea doar pentru anumite roluri (opțional)</span>
+                  </label>
+                </div>
+                {!itemRestrictedView && (
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', marginLeft: '22px' }}>
+                    {currentFolder
+                      ? `Implicit: Moștenește automat drepturile folderului "${currentFolder.name}"`
+                      : 'Implicit: Vizibil pentru toate rolurile autorizate'}
+                  </div>
+                )}
+                {itemRestrictedView && (
+                  <div style={{ marginTop: '10px', marginLeft: '22px' }}>
+                    <div style={{ fontSize: '11px', color: '#475569', marginBottom: '6px' }}>
+                      Bifează rolurile care vor putea vedea acest fișier / document:
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {permissions.systemRoles.map(role => {
+                        const isAdminRole = role.toLowerCase() === 'admin';
+                        const isChecked = isAdminRole || itemAllowedRoles.includes(role);
+                        return (
+                          <label
+                            key={role}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              backgroundColor: isChecked ? '#eff6ff' : '#ffffff',
+                              border: `1px solid ${isChecked ? '#93c5fd' : '#cbd5e1'}`,
+                              fontSize: '12px',
+                              cursor: isAdminRole ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              disabled={isAdminRole}
+                              onChange={() => toggleRoleInList(role, itemAllowedRoles, setItemAllowedRoles)}
+                            />
+                            <span>{role}</span>
+                            {isAdminRole && <span style={{ fontSize: '10px', color: '#64748b' }}>(Implicit)</span>}
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
@@ -2680,6 +3128,65 @@ export default function KnowledgePage({ currentUser }) {
                     boxSizing: 'border-box',
                   }}
                 />
+              </div>
+
+              {/* Optional Visibility Restriction */}
+              <div style={{ marginBottom: '18px', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <input
+                      type="checkbox"
+                      checked={itemRestrictedView}
+                      onChange={e => setItemRestrictedView(e.target.checked)}
+                    />
+                    <span>🔒 Restrânge vizibilitatea doar pentru anumite roluri (opțional)</span>
+                  </label>
+                </div>
+                {!itemRestrictedView && (
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', marginLeft: '22px' }}>
+                    {currentFolder
+                      ? `Implicit: Moștenește automat drepturile folderului "${currentFolder.name}"`
+                      : 'Implicit: Vizibil pentru toate rolurile autorizate'}
+                  </div>
+                )}
+                {itemRestrictedView && (
+                  <div style={{ marginTop: '10px', marginLeft: '22px' }}>
+                    <div style={{ fontSize: '11px', color: '#475569', marginBottom: '6px' }}>
+                      Bifează rolurile care vor putea vedea acest fișier / document:
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {permissions.systemRoles.map(role => {
+                        const isAdminRole = role.toLowerCase() === 'admin';
+                        const isChecked = isAdminRole || itemAllowedRoles.includes(role);
+                        return (
+                          <label
+                            key={role}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              backgroundColor: isChecked ? '#eff6ff' : '#ffffff',
+                              border: `1px solid ${isChecked ? '#93c5fd' : '#cbd5e1'}`,
+                              fontSize: '12px',
+                              cursor: isAdminRole ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              disabled={isAdminRole}
+                              onChange={() => toggleRoleInList(role, itemAllowedRoles, setItemAllowedRoles)}
+                            />
+                            <span>{role}</span>
+                            {isAdminRole && <span style={{ fontSize: '10px', color: '#64748b' }}>(Implicit)</span>}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Buttons */}

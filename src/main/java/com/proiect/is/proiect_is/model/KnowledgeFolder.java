@@ -24,6 +24,15 @@ public class KnowledgeFolder {
     @JsonIgnoreProperties({"password", "hibernateLazyInitializer", "handler"})
     private User creator;
 
+    @Column(nullable = false, length = 500)
+    private String allowedRolesToView = "ALL"; // "ALL" or comma-separated roles
+
+    @Column(nullable = false, length = 500)
+    private String allowedRolesToWrite = "ADMIN_CREATOR"; // "ADMIN_CREATOR" or comma-separated roles
+
+    @Column(nullable = false, length = 500)
+    private String allowedRolesToEdit = "ADMIN_CREATOR"; // "ADMIN_CREATOR" or comma-separated roles
+
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
@@ -36,6 +45,20 @@ public class KnowledgeFolder {
         this.name = name;
         this.parentId = parentId;
         this.creator = creator;
+        this.allowedRolesToView = "ALL";
+        this.allowedRolesToWrite = "ADMIN_CREATOR";
+        this.allowedRolesToEdit = "ADMIN_CREATOR";
+        this.createdAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public KnowledgeFolder(String name, Long parentId, User creator, String allowedRolesToView, String allowedRolesToWrite, String allowedRolesToEdit) {
+        this.name = name;
+        this.parentId = parentId;
+        this.creator = creator;
+        this.allowedRolesToView = (allowedRolesToView != null && !allowedRolesToView.trim().isEmpty()) ? allowedRolesToView : "ALL";
+        this.allowedRolesToWrite = (allowedRolesToWrite != null && !allowedRolesToWrite.trim().isEmpty()) ? allowedRolesToWrite : "ADMIN_CREATOR";
+        this.allowedRolesToEdit = (allowedRolesToEdit != null && !allowedRolesToEdit.trim().isEmpty()) ? allowedRolesToEdit : "ADMIN_CREATOR";
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
     }
@@ -70,6 +93,30 @@ public class KnowledgeFolder {
 
     public void setCreator(User creator) {
         this.creator = creator;
+    }
+
+    public String getAllowedRolesToView() {
+        return allowedRolesToView;
+    }
+
+    public void setAllowedRolesToView(String allowedRolesToView) {
+        this.allowedRolesToView = allowedRolesToView;
+    }
+
+    public String getAllowedRolesToWrite() {
+        return allowedRolesToWrite;
+    }
+
+    public void setAllowedRolesToWrite(String allowedRolesToWrite) {
+        this.allowedRolesToWrite = allowedRolesToWrite;
+    }
+
+    public String getAllowedRolesToEdit() {
+        return allowedRolesToEdit;
+    }
+
+    public void setAllowedRolesToEdit(String allowedRolesToEdit) {
+        this.allowedRolesToEdit = allowedRolesToEdit;
     }
 
     public LocalDateTime getCreatedAt() {
