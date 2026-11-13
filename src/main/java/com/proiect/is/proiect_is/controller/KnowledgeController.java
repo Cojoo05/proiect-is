@@ -172,6 +172,11 @@ public class KnowledgeController {
         String allowedRolesToEdit = body.get("allowedRolesToEdit") != null ? (String) body.get("allowedRolesToEdit") : "ADMIN_CREATOR";
         String allowedUserIdsToEdit = body.get("allowedUserIdsToEdit") != null ? (String) body.get("allowedUserIdsToEdit") : "";
         boolean isPinned = body.get("isPinned") != null && Boolean.parseBoolean(body.get("isPinned").toString());
+        String itemType = body.get("itemType") != null ? (String) body.get("itemType") : "NOTE";
+        String fileName = (String) body.get("fileName");
+        String fileType = (String) body.get("fileType");
+        Long fileSize = body.get("fileSize") != null ? Long.valueOf(body.get("fileSize").toString()) : null;
+        String fileData = (String) body.get("fileData");
 
         if (title == null || title.trim().isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Titlul este obligatoriu!"));
@@ -199,6 +204,11 @@ public class KnowledgeController {
         note.setCreatedAt(LocalDateTime.now());
         note.setUpdatedAt(LocalDateTime.now());
         note.setPinned(isPinned);
+        note.setItemType(itemType);
+        note.setFileName(fileName);
+        note.setFileType(fileType);
+        note.setFileSize(fileSize);
+        note.setFileData(fileData);
         note.setYoutubeUrl(youtubeUrl != null ? youtubeUrl.trim() : null);
         note.setImagesJson(imagesJson);
         note.setAllowedRolesToView(allowedRolesToView != null && !allowedRolesToView.trim().isEmpty() ? allowedRolesToView.trim() : "ALL");
@@ -252,6 +262,18 @@ public class KnowledgeController {
         if (body.containsKey("imagesJson")) {
             note.setImagesJson((String) body.get("imagesJson"));
         }
+        if (body.containsKey("fileName")) {
+            note.setFileName(body.get("fileName") != null ? body.get("fileName").toString() : null);
+        }
+        if (body.containsKey("fileType")) {
+            note.setFileType(body.get("fileType") != null ? body.get("fileType").toString() : null);
+        }
+        if (body.containsKey("fileSize")) {
+            note.setFileSize(body.get("fileSize") != null ? Long.valueOf(body.get("fileSize").toString()) : null);
+        }
+        if (body.containsKey("fileData")) {
+            note.setFileData(body.get("fileData") != null ? body.get("fileData").toString() : null);
+        }
         if (body.containsKey("allowedRolesToView") && body.get("allowedRolesToView") != null) {
             note.setAllowedRolesToView(body.get("allowedRolesToView").toString().trim());
         }
@@ -300,6 +322,26 @@ public class KnowledgeController {
 
         knowledgeRepository.delete(note);
         return ResponseEntity.ok(Map.of("message", "Notița a fost ștearsă cu succes!"));
+    }
+
+    // --- DOWNLOAD DRIVE FILE ---
+    @GetMapping("/{id}/download")
+    public ResponseEntity<?> downloadFile(@PathVariable Long id) {
+        KnowledgeNote note = knowledgeRepository.findById(id).orElse(null);
+        if (note == null || note.getFileData() == null) {
+            return ResponseEntity.notFound().build();
+        }
+        try {
+            byte[] data = java.util.Base64.getDecoder().decode(note.getFileData());
+            String fileName = note.getFileName() != null ? note.getFileName() : "document";
+            String contentType = note.getFileType() != null ? note.getFileType() : "application/octet-stream";
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=\"" + fileName + "\"")
+                    .header("Content-Type", contentType)
+                    .body(data);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Eroare la descărcarea fișierului!"));
+        }
     }
 
     // --- CHECK USER PERMISSION TO CREATE NOTES ---

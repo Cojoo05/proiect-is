@@ -42,6 +42,21 @@ public class KnowledgeNote {
     @Column(columnDefinition = "TEXT")
     private String imagesJson; // Stores JSON array of image URLs or base64 data strings
 
+    @Column(length = 20)
+    private String itemType = "NOTE"; // "NOTE" or "DRIVE"
+
+    @Column
+    private String fileName;
+
+    @Column
+    private String fileType;
+
+    @Column
+    private Long fileSize;
+
+    @Column(columnDefinition = "TEXT")
+    private String fileData;
+
     @Column(nullable = false, length = 500)
     private String allowedRolesToView = "ALL"; // "ALL" or comma-separated role names e.g. "Admin,Developer"
 
@@ -167,4 +182,19 @@ public class KnowledgeNote {
     public void setAllowedUserIdsToEdit(String allowedUserIdsToEdit) {
         this.allowedUserIdsToEdit = allowedUserIdsToEdit;
     }
+
+    public String getItemType() { return itemType != null ? itemType : "NOTE"; }
+    public void setItemType(String itemType) { this.itemType = itemType; }
+
+    public String getFileName() { return fileName; }
+    public void setFileName(String fileName) { this.fileName = fileName; }
+
+    public String getFileType() { return fileType; }
+    public void setFileType(String fileType) { this.fileType = fileType; }
+
+    public Long getFileSize() { return fileSize; }
+    public void setFileSize(Long fileSize) { this.fileSize = fileSize; }
+
+    public String getFileData() { return fileData; }
+    public void setFileData(String fileData) { this.fileData = fileData; }
 }

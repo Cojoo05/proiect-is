@@ -389,4 +389,50 @@ public class UserController {
             return ResponseEntity.status(401).body("Invalid credentials");
         }
     }
+
+    // --- LOGIN CU GOOGLE ---
+    @PostMapping("/login-google")
+    public ResponseEntity<?> loginWithGoogle(@RequestBody Map<String, String> body) {
+        String googleId = body.get("googleId");
+        String googleEmail = body.get("googleEmail");
+
+        if ((googleId == null || googleId.trim().isEmpty()) && (googleEmail == null || googleEmail.trim().isEmpty())) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Datele contului Google lipsesc!"));
+        }
+
+        User user = null;
+
+        // 1. Căutăm utilizatorul după googleId
+        if (googleId != null && !googleId.trim().isEmpty()) {
+            user = userRepository.findByGoogleId(googleId.trim()).orElse(null);
+        }
+
+        // 2. Căutăm după email dacă nu a fost găsit direct după googleId
+        if (user == null && googleEmail != null && !googleEmail.trim().isEmpty()) {
+            Optional<User> byEmail = userRepository.findByEmail(googleEmail.trim().toLowerCase());
+            if (byEmail.isPresent()) {
+                User candidate = byEmail.get();
+                // Verificăm dacă respectivul cont este sincronizat cu Google
+                if (candidate.getGoogleId() != null && !candidate.getGoogleId().trim().isEmpty()) {
+                    user = candidate;
+                } else {
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                            .body(Map.of("message", "Contul asociat acestei adrese de email există, dar nu a fost sincronizat cu Google. Te rugăm să te autentifici mai întâi cu utilizator și parolă și să sincronizezi contul din Setări."));
+                }
+            }
+        }
+
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "Niciun cont sincronizat cu acest profil Google nu a fost găsit. Pentru a te loga cu Google, contul trebuie mai întâi sincronizat din Setări."));
+        }
+
+        if (Boolean.TRUE.equals(user.getArchived())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Acest cont a fost dezactivat/șters."));
+        }
+
+        enrichUserRole(user);
+        return ResponseEntity.ok(user);
+    }
 }
