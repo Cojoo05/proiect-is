@@ -435,4 +435,95 @@ public class UserController {
         enrichUserRole(user);
         return ResponseEntity.ok(user);
     }
+
+    // --- VERIFICARE DISPONIBILITATE GOOGLE PENTRU REGISTER ---
+    @PostMapping("/check-google")
+    public ResponseEntity<?> checkGoogle(@RequestBody Map<String, String> body) {
+        String googleId = body.get("googleId");
+        String googleEmail = body.get("googleEmail");
+
+        if (googleId != null && !googleId.trim().isEmpty()) {
+            Optional<User> byGId = userRepository.findByGoogleId(googleId.trim());
+            if (byGId.isPresent()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "registered", true,
+                        "message", "Acest cont Google este deja înregistrat și asociat utilizatorului '" + byGId.get().getUsername() + "'. Te rugăm să folosești pagina de Login."
+                ));
+            }
+        }
+
+        if (googleEmail != null && !googleEmail.trim().isEmpty()) {
+            Optional<User> byMail = userRepository.findByEmail(googleEmail.trim().toLowerCase());
+            if (byMail.isPresent()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "registered", true,
+                        "message", "Adresa de email (" + googleEmail + ") este deja folosită de contul '" + byMail.get().getUsername() + "'. Te rugăm să folosești pagina de Login."
+                ));
+            }
+        }
+
+        return ResponseEntity.ok(Map.of("available", true));
+    }
+
+    // --- REGISTER CU GOOGLE ---
+    @PostMapping("/register-google")
+    public ResponseEntity<?> registerWithGoogle(@RequestBody Map<String, String> body) {
+        String googleId = body.get("googleId");
+        String googleEmail = body.get("googleEmail");
+        String username = body.get("username");
+        String password = body.get("password");
+
+        if (googleId == null || googleId.trim().isEmpty() || googleEmail == null || googleEmail.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Datele contului Google lipsesc!"));
+        }
+
+        if (username == null || username.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Numele de utilizator este obligatoriu!"));
+        }
+
+        if (password == null || password.trim().length() < 3) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Parola trebuie să aibă minim 3 caractere!"));
+        }
+
+        googleEmail = googleEmail.trim().toLowerCase();
+        username = username.trim();
+
+        // 1. Verificăm unicitatea googleId
+        Optional<User> existingGoogle = userRepository.findByGoogleId(googleId.trim());
+        if (existingGoogle.isPresent()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Acest cont Google este deja înregistrat și asociat utilizatorului '" + existingGoogle.get().getUsername() + "'. Te rugăm să te conectezi din pagina de Login!"
+            ));
+        }
+
+        // 2. Verificăm unicitatea adresei de email
+        Optional<User> existingEmail = userRepository.findByEmail(googleEmail);
+        if (existingEmail.isPresent()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Adresa de email " + googleEmail + " este deja asociată unui cont existent! Te rugăm să te conectezi cu parola sau să sincronizezi contul din Setări."
+            ));
+        }
+
+        // 3. Verificăm unicitatea numelui de utilizator
+        Optional<User> existingUser = userRepository.findByUsername(username);
+        if (existingUser.isPresent()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Numele de utilizator '" + username + "' este deja folosit! Te rugăm să alegi altul."));
+        }
+
+        User newUser = new User();
+        newUser.setUsername(username);
+        newUser.setEmail(googleEmail);
+        newUser.setGoogleId(googleId.trim());
+        newUser.setRole("User");
+        newUser.setArchived(false);
+        newUser.setHasAdminAccess(false);
+
+        BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
+        newUser.setPassword(encoder.encode(password.trim()));
+
+        User saved = userRepository.save(newUser);
+        enrichUserRole(saved);
+
+        return ResponseEntity.ok(saved);
+    }
 }

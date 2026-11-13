@@ -43,7 +43,7 @@ function App() {
       <Routes>
         {/* Public routes — no TopBar */}
         <Route path="/login" element={currentUser ? <Navigate to="/dashboard" /> : <Login setCurrentUser={setCurrentUser} />} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/register" element={<Register setCurrentUser={setCurrentUser} />} />
 
         {/* Root redirect */}
         <Route path="/" element={<Navigate to={currentUser ? '/dashboard' : '/login'} />} />
