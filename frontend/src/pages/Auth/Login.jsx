@@ -217,7 +217,7 @@ function Login({ setCurrentUser }) {
         <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <input
             type="text"
-            placeholder="Username"
+            placeholder=""
             value={loginData.username}
             onChange={(e) => setLoginData({ ...loginData, username: e.target.value })}
             required
@@ -232,7 +232,7 @@ function Login({ setCurrentUser }) {
           />
           <input
             type="password"
-            placeholder="Password"
+            placeholder=""
             value={loginData.password}
             onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
             required

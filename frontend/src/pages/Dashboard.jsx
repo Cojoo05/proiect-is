@@ -36,6 +36,20 @@ function Dashboard({ currentUser }) {
 
   const apps = [
     {
+      id: 'announcements',
+      title: 'Anunțuri',
+      icon: '📢',
+      description: 'Anunțurile echipei — publicate de administratori, vizibile pentru toți',
+      path: '/announcements'
+    },
+    {
+      id: 'meeting-rooms',
+      title: 'Meeting Rooms',
+      icon: '🏢',
+      description: 'Delegare și rezervare săli pentru echipe și grupuri',
+      path: '/meeting-rooms'
+    },
+    {
       id: 'for-me',
       title: 'For Me',
       icon: '👤',
