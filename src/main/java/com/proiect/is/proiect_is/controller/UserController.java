@@ -43,9 +43,11 @@ public class UserController {
         user.setEmail(userDetails.getEmail());
         user.setRole(userDetails.getRole());
 
-        BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
-        String hash = encoder.encode(userDetails.getPassword());
-        user.setPassword(hash);
+        // Parola se schimbă doar dacă a fost trimisă; altfel rămâne cea existentă.
+        if (userDetails.getPassword() != null && !userDetails.getPassword().isBlank()) {
+            BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
+            user.setPassword(encoder.encode(userDetails.getPassword()));
+        }
 
         return userRepository.save(user);
     }
