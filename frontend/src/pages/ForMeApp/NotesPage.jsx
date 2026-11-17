@@ -1,106 +1,152 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '../../context/ToastContext.jsx';
+import ConfirmDialog from '../../components/ConfirmDialog.jsx';
+import { formatShortDateTime } from '../../utils/format.js';
+import { colors } from '../../theme.js';
 import { API_BASE_URL } from '../../config';
+
+const API_URL = `${API_BASE_URL}/api/notes`;
+
+const isNotePinned = (note) => Boolean(note.isPinned ?? note.pinned);
 
 function NotesPage({ currentUser }) {
   const navigate = useNavigate();
+  const toast = useToast();
+
   const [notes, setNotes] = useState([]);
   const [selectedNote, setSelectedNote] = useState(null);
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [saveState, setSaveState] = useState('idle');
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
-  const API_URL = `${API_BASE_URL}/api/notes`;
+  const debounceRef = useRef(null);
+  const pendingRef = useRef(null);
 
-  const isNotePinned = (note) => Boolean(note.isPinned ?? note.pinned);
-
-  const fetchNotes = () => {
+  const loadNotes = () => {
     if (!currentUser?.id) return;
+
     setLoading(true);
+    setError('');
+
     fetch(`${API_URL}/creator/${currentUser.id}`)
       .then((res) => {
-        if (!res.ok) throw new Error('Eroare la preluarea notițelor');
+        if (!res.ok) throw new Error('Notițele nu au putut fi încărcate.');
         return res.json();
       })
       .then((data) => {
         const normalized = Array.isArray(data)
-          ? data.map((n) => ({ ...n, isPinned: isNotePinned(n) }))
+          ? data.map((note) => ({ ...note, isPinned: isNotePinned(note) }))
           : [];
         setNotes(normalized);
-        setLoading(false);
       })
-      .catch((err) => {
-        console.error(err);
-        setLoading(false);
-      });
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    fetchNotes();
+    const timer = window.setTimeout(loadNotes, 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
 
-  const formatDate = (isoString) => {
-    if (!isoString) return '-';
-    const date = new Date(isoString);
-    return date.toLocaleDateString('ro-RO', { day: '2-digit', month: 'short' }) + ', ' +
-           date.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
+  useEffect(
+    () => () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    },
+    []
+  );
+
+  const persistNote = (note, onDone) => {
+    setSaveState('saving');
+
+    fetch(`${API_URL}/${note.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: note.title,
+        text: note.text,
+        isPinned: isNotePinned(note),
+        pinned: isNotePinned(note)
+      })
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error('Notița nu a putut fi salvată.');
+        setSaveState('saved');
+        window.setTimeout(() => setSaveState('idle'), 1500);
+        onDone?.();
+      })
+      .catch((err) => {
+        setSaveState('idle');
+        toast.error(err.message);
+      });
+  };
+
+  const scheduleSave = (note) => {
+    pendingRef.current = note;
+    setSaveState('saving');
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(() => {
+      pendingRef.current = null;
+      persistNote(note);
+    }, 600);
+  };
+
+  const flushSave = () => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    if (pendingRef.current) {
+      const note = pendingRef.current;
+      pendingRef.current = null;
+      persistNote(note);
+    }
   };
 
   const handleCreateNote = () => {
     if (!currentUser?.id) return;
 
-    const payload = {
-      title: 'Notă Nouă',
-      text: '',
-      isPinned: false,
-      pinned: false,
-      creator: { id: currentUser.id }
-    };
-
     fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        title: 'Notă nouă',
+        text: '',
+        isPinned: false,
+        pinned: false,
+        creator: { id: currentUser.id }
+      })
     })
       .then((res) => {
-        if (!res.ok) throw new Error('Eroare la crearea notiței');
+        if (!res.ok) throw new Error('Notița nu a putut fi creată.');
         return res.json();
       })
       .then((createdNote) => {
         const normalized = { ...createdNote, isPinned: isNotePinned(createdNote) };
-        setNotes([normalized, ...notes]);
+        setNotes((prev) => [normalized, ...prev]);
         setSelectedNote(normalized);
       })
-      .catch((err) => alert(err.message));
+      .catch((err) => toast.error(err.message));
   };
 
-  const handleContentChange = (e) => {
-    const updatedText = e.target.value;
-    const lines = updatedText.split('\n');
-    const updatedTitle = lines[0].trim() || 'Notă Fără Titlu';
+  const handleContentChange = (event) => {
+    const updatedText = event.target.value;
+    const updatedTitle = updatedText.split('\n')[0].trim() || 'Notă fără titlu';
 
-    const updatedNote = {
-      ...selectedNote,
-      title: updatedTitle,
-      text: updatedText
-    };
+    const updatedNote = { ...selectedNote, title: updatedTitle, text: updatedText };
 
     setSelectedNote(updatedNote);
-    setNotes(notes.map((n) => (n.id === updatedNote.id ? updatedNote : n)));
-
-    fetch(`${API_URL}/${updatedNote.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: updatedTitle,
-        text: updatedText,
-        isPinned: isNotePinned(updatedNote),
-        pinned: isNotePinned(updatedNote)
-      })
-    }).catch((err) => console.error(err));
+    setNotes((prev) => prev.map((note) => (note.id === updatedNote.id ? updatedNote : note)));
+    scheduleSave(updatedNote);
   };
 
-  const handleTogglePin = (note, e) => {
-    e.stopPropagation();
+  const handleTogglePin = (note, event) => {
+    event.stopPropagation();
     const newPinnedState = !isNotePinned(note);
 
     fetch(`${API_URL}/${note.id}`, {
@@ -114,187 +160,245 @@ function NotesPage({ currentUser }) {
       })
     })
       .then((res) => {
-        if (!res.ok) throw new Error('Eroare la actualizarea pin-ului');
+        if (!res.ok) throw new Error('Fixarea notiței nu a putut fi schimbată.');
         return res.json();
       })
       .then(() => {
-        setNotes((prevNotes) =>
-          prevNotes
-            .map((n) => (n.id === note.id ? { ...n, isPinned: newPinnedState, pinned: newPinnedState } : n))
+        setNotes((prev) =>
+          prev
+            .map((item) =>
+              item.id === note.id ? { ...item, isPinned: newPinnedState, pinned: newPinnedState } : item
+            )
             .sort((a, b) => (isNotePinned(b) ? 1 : 0) - (isNotePinned(a) ? 1 : 0))
         );
+        if (selectedNote?.id === note.id) {
+          setSelectedNote((prev) => ({ ...prev, isPinned: newPinnedState, pinned: newPinnedState }));
+        }
         setMenuOpenId(null);
+        toast.success(newPinnedState ? 'Notiță fixată sus.' : 'Notiță defixată.');
       })
-      .catch((err) => alert(err.message));
+      .catch((err) => toast.error(err.message));
   };
 
-  const handleDeleteNote = (id, e) => {
-    e.stopPropagation();
-    if (!window.confirm('Sigur dorești să ștergi această notiță?')) return;
+  const confirmDeleteNote = () => {
+    if (!pendingDelete) return;
 
-    fetch(`${API_URL}/${id}`, {
-      method: 'DELETE'
-    })
+    setDeleting(true);
+
+    fetch(`${API_URL}/${pendingDelete.id}`, { method: 'DELETE' })
       .then((res) => {
-        if (!res.ok) throw new Error('Eroare la ștergerea notiței');
-        setNotes(notes.filter((n) => n.id !== id));
-        if (selectedNote?.id === id) setSelectedNote(null);
+        if (!res.ok) throw new Error('Notița nu a putut fi ștearsă.');
+        setNotes((prev) => prev.filter((note) => note.id !== pendingDelete.id));
+        if (selectedNote?.id === pendingDelete.id) setSelectedNote(null);
+        setPendingDelete(null);
         setMenuOpenId(null);
+        toast.success('Notiță ștearsă.');
       })
-      .catch((err) => alert(err.message));
+      .catch((err) => toast.error(err.message))
+      .finally(() => setDeleting(false));
   };
 
   const sortedNotes = [...notes].sort((a, b) => (isNotePinned(b) ? 1 : 0) - (isNotePinned(a) ? 1 : 0));
 
   return (
-    <div
-      style={{ padding: '30px', fontFamily: 'sans-serif', maxWidth: '1100px', margin: '0 auto' }}
-      onClick={() => setMenuOpenId(null)}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
-        <button
-          onClick={() => navigate('/for-me')}
-          style={{ padding: '8px 15px', cursor: 'pointer', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '5px' }}
-        >
-          ⬅️ Back to For Me
-        </button>
-        <h1 style={{ margin: 0, color: '#333', fontSize: '2rem' }}>📝 Notes</h1>
-        <div style={{ width: '100px' }}></div>
+    <div className="page-container" onClick={() => setMenuOpenId(null)}>
+      <div className="page-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn btn--secondary btn--sm"
+            onClick={() => navigate('/for-me')}
+          >
+            ⬅️ Înapoi la For Me
+          </button>
+          <div>
+            <h1 className="page-title">📝 Notes</h1>
+            <p className="page-subtitle">Notițele tale personale. Salvare automată, prima linie devine titlul.</p>
+          </div>
+        </div>
+
+        {!selectedNote && (
+          <button type="button" className="btn btn--primary" onClick={handleCreateNote}>
+            + Notiță nouă
+          </button>
+        )}
       </div>
 
+      {error && (
+        <div className="alert alert--error" role="alert">
+          <span>{error}</span>
+          <button type="button" className="btn btn--secondary btn--sm" onClick={loadNotes}>
+            Reîncearcă
+          </button>
+        </div>
+      )}
+
       {selectedNote ? (
-        <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <span style={{ fontSize: '12px', color: '#888' }}>
-              Creată: {formatDate(selectedNote.creationDate)} | Ultima modificare: {formatDate(selectedNote.lastModificationDate)}
+        <div className="card">
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '12px',
+              marginBottom: '14px',
+              flexWrap: 'wrap'
+            }}
+          >
+            <span style={{ fontSize: '12px', color: colors.textMuted }}>
+              Creată: {formatShortDateTime(selectedNote.creationDate)} · Modificată:{' '}
+              {formatShortDateTime(selectedNote.lastModificationDate)}
             </span>
-            <button
-              onClick={() => {
-                setSelectedNote(null);
-                fetchNotes();
-              }}
-              style={{ padding: '6px 14px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-            >
-              📁 Înapoi la Listă
-            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span
+                aria-live="polite"
+                style={{ fontSize: '12px', fontWeight: 600, color: saveState === 'saving' ? '#b45309' : '#047857' }}
+              >
+                {saveState === 'saving' ? 'Se salvează...' : saveState === 'saved' ? 'Salvat ✓' : ''}
+              </span>
+
+              <button
+                type="button"
+                className="btn btn--secondary btn--sm"
+                onClick={() => {
+                  flushSave();
+                  setSelectedNote(null);
+                  loadNotes();
+                }}
+              >
+                ← Înapoi la listă
+              </button>
+            </div>
           </div>
+
+          <label className="label" htmlFor="note-content">Conținut notiță</label>
           <textarea
+            id="note-content"
+            className="textarea"
             value={selectedNote.text || ''}
             onChange={handleContentChange}
-            placeholder="Scrie notița aici... (Prima linie devine titlul)"
-            style={{
-              width: '100%',
-              height: '420px',
-              padding: '15px',
-              fontSize: '16px',
-              borderRadius: '6px',
-              border: '1px solid #ccc',
-              resize: 'vertical',
-              fontFamily: 'sans-serif',
-              boxSizing: 'border-box'
-            }}
+            placeholder="Scrie notița aici... (prima linie devine titlul)"
+            style={{ height: '420px', fontSize: '15px', lineHeight: 1.6 }}
           />
         </div>
       ) : (
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#f8f9fa', padding: '12px 20px', borderRadius: '8px 8px 0 0', border: '1px solid #ddd', borderBottom: 'none' }}>
-            <button
-              onClick={handleCreateNote}
-              style={{ backgroundColor: '#5a3d5c', color: 'white', border: 'none', padding: '8px 18px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
-            >
-              NEW
-            </button>
-          </div>
-
-          <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'white', border: '1px solid #ddd', borderRadius: '0 0 8px 8px' }}>
+        <div className="table-wrap">
+          <table className="table">
             <thead>
-              <tr style={{ backgroundColor: '#f1f3f5', textAlign: 'left', borderBottom: '2px solid #dee2e6' }}>
-                <th style={{ padding: '12px 15px', color: '#495057' }}>Title</th>
-                <th style={{ padding: '12px 15px', color: '#495057' }}>Last Modified</th>
-                <th style={{ padding: '12px 15px', color: '#495057' }}>Creation Date</th>
-                <th style={{ padding: '12px 15px', textAlign: 'center', color: '#495057', width: '90px' }}>Actions</th>
+              <tr>
+                <th>Titlu</th>
+                <th>Ultima modificare</th>
+                <th>Creată</th>
+                <th style={{ textAlign: 'center', width: '90px' }}>Acțiuni</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="4" style={{ textAlign: 'center', padding: '30px', color: '#666' }}>
+                  <td colSpan={4} style={{ textAlign: 'center', padding: '32px', color: colors.textMuted }}>
                     Se încarcă notițele...
                   </td>
                 </tr>
               ) : sortedNotes.length === 0 ? (
                 <tr>
-                  <td colSpan="4" style={{ textAlign: 'center', padding: '30px', color: '#888' }}>
-                    Nu ai nicio notiță salvată. Apasă pe <strong>NEW</strong> pentru a crea una!
+                  <td colSpan={4} style={{ textAlign: 'center', padding: '32px', color: colors.textMuted }}>
+                    Nu ai nicio notiță încă. Apasă pe <strong>+ Notiță nouă</strong> pentru a începe.
                   </td>
                 </tr>
               ) : (
                 sortedNotes.map((note) => {
                   const pinned = isNotePinned(note);
+
                   return (
                     <tr
                       key={note.id}
                       onClick={() => setSelectedNote(note)}
-                      style={{
-                        borderBottom: '1px solid #eee',
-                        cursor: 'pointer',
-                        backgroundColor: pinned ? '#fff9db' : 'white',
-                        transition: 'background 0.15s'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = pinned ? '#fef08a' : '#f8f9fa';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = pinned ? '#fff9db' : 'white';
-                      }}
+                      style={{ cursor: 'pointer', backgroundColor: pinned ? '#fffbeb' : undefined }}
                     >
-                      <td style={{ padding: '12px 15px', fontWeight: '500', color: '#212529' }}>
-                        {pinned ? '📌 ' : ''}{note.title}
+                      <td style={{ fontWeight: 500, color: '#1e293b' }}>
+                        {pinned ? '📌 ' : ''}
+                        {note.title}
                       </td>
-                      <td style={{ padding: '12px 15px', color: '#6c757d', fontSize: '14px' }}>
-                        {formatDate(note.lastModificationDate)}
-                      </td>
-                      <td style={{ padding: '12px 15px', color: '#6c757d', fontSize: '14px' }}>
-                        {formatDate(note.creationDate)}
-                      </td>
-                      <td style={{ padding: '12px 15px', textAlign: 'center', position: 'relative' }}>
+                      <td style={{ color: colors.textMuted }}>{formatShortDateTime(note.lastModificationDate)}</td>
+                      <td style={{ color: colors.textMuted }}>{formatShortDateTime(note.creationDate)}</td>
+                      <td style={{ textAlign: 'center', position: 'relative' }}>
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
+                          type="button"
+                          aria-label={`Acțiuni pentru notița ${note.title}`}
+                          aria-expanded={menuOpenId === note.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
                             setMenuOpenId(menuOpenId === note.id ? null : note.id);
                           }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', fontWeight: 'bold', color: '#6c757d', padding: '0 8px' }}
+                          style={{
+                            padding: '2px 10px',
+                            background: 'none',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontSize: '18px',
+                            fontWeight: 700,
+                            color: colors.textMuted,
+                            cursor: 'pointer'
+                          }}
                         >
                           ⋮
                         </button>
 
                         {menuOpenId === note.id && (
                           <div
+                            onClick={(event) => event.stopPropagation()}
                             style={{
                               position: 'absolute',
                               right: '10px',
-                              top: '35px',
-                              backgroundColor: 'white',
-                              border: '1px solid #ccc',
-                              borderRadius: '6px',
-                              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                              top: '36px',
                               zIndex: 100,
+                              minWidth: '120px',
+                              overflow: 'hidden',
                               textAlign: 'left',
-                              minWidth: '105px',
-                              overflow: 'hidden'
+                              backgroundColor: '#ffffff',
+                              border: `1px solid ${colors.border}`,
+                              borderRadius: '8px',
+                              boxShadow: '0 8px 20px rgba(15, 23, 42, 0.15)'
                             }}
                           >
                             <button
-                              onClick={(e) => handleTogglePin(note, e)}
-                              style={{ display: 'block', width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '13px', borderBottom: '1px solid #eee' }}
+                              type="button"
+                              onClick={(event) => handleTogglePin(note, event)}
+                              style={{
+                                display: 'block',
+                                width: '100%',
+                                padding: '9px 14px',
+                                background: 'none',
+                                border: 'none',
+                                borderBottom: `1px solid ${colors.border}`,
+                                textAlign: 'left',
+                                fontSize: '13px',
+                                cursor: 'pointer'
+                              }}
                             >
-                              {pinned ? '📍 Unpin' : '📌 Pin'}
+                              {pinned ? '📍 Defixează' : '📌 Fixează sus'}
                             </button>
                             <button
-                              onClick={(e) => handleDeleteNote(note.id, e)}
-                              style={{ display: 'block', width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '13px', color: '#dc3545' }}
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setPendingDelete(note);
+                                setMenuOpenId(null);
+                              }}
+                              style={{
+                                display: 'block',
+                                width: '100%',
+                                padding: '9px 14px',
+                                background: 'none',
+                                border: 'none',
+                                textAlign: 'left',
+                                fontSize: '13px',
+                                color: '#b91c1c',
+                                cursor: 'pointer'
+                              }}
                             >
-                              🗑️ Delete
+                              🗑️ Șterge
                             </button>
                           </div>
                         )}
@@ -307,6 +411,16 @@ function NotesPage({ currentUser }) {
           </table>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Ștergi notița?"
+        message={pendingDelete ? `„${pendingDelete.title}" va fi ștearsă definitiv.` : ''}
+        confirmLabel="Șterge notița"
+        loading={deleting}
+        onConfirm={confirmDeleteNote}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

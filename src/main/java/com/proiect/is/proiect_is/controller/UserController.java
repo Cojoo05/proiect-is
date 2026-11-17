@@ -126,7 +126,7 @@ public class UserController {
             user.setRole(userDetails.getRole().trim());
         }
 
-        // Only update password if a new password is provided
+        // Parola se schimbă doar dacă a fost trimisă; altfel rămâne cea existentă.
         if (userDetails.getPassword() != null && !userDetails.getPassword().trim().isEmpty()) {
             BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
             user.setPassword(encoder.encode(userDetails.getPassword()));
