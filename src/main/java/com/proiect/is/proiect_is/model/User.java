@@ -24,8 +24,37 @@ public class User {
     @Column(nullable = false)
     private String role;
 
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private Boolean archived = false;
+
+    @Column(name = "google_id")
+    private String googleId;
+
     @Transient
     private Boolean hasAdminAccess = false;
+
+    @JsonProperty("googleSynced")
+    public Boolean getGoogleSynced() {
+        return googleId != null && !googleId.trim().isEmpty();
+    }
+
+
+
+    public String getGoogleId() {
+        return googleId;
+    }
+
+    public void setGoogleId(String googleId) {
+        this.googleId = googleId;
+    }
+
+    public Boolean getArchived() {
+        return archived != null && archived;
+    }
+
+    public void setArchived(Boolean archived) {
+        this.archived = archived;
+    }
 
     public Long getId() {
         return id;

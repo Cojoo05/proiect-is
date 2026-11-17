@@ -53,7 +53,9 @@ public class SystemRoleService {
 
     public List<Map<String, Object>> getAllRolesWithUserCounts() {
         List<SystemRole> roles = systemRoleRepository.findAll();
-        List<User> allUsers = userRepository.findAll();
+        List<User> allUsers = userRepository.findAll().stream()
+                .filter(u -> !Boolean.TRUE.equals(u.getArchived()))
+                .collect(Collectors.toList());
 
         return roles.stream().map(role -> {
             long count = allUsers.stream()
@@ -67,6 +69,7 @@ public class SystemRoleService {
             map.put("hasFullAccess", role.isHasFullAccess());
             map.put("color", role.getColor());
             map.put("isDefault", role.isDefault());
+            map.put("canCreateKnowledge", role.isCanCreateKnowledge());
             map.put("createdAt", role.getCreatedAt());
             map.put("userCount", count);
             return map;
@@ -78,6 +81,14 @@ public class SystemRoleService {
         if ("ADMIN".equalsIgnoreCase(roleName.trim())) return true;
         return systemRoleRepository.findByNameIgnoreCase(roleName.trim())
                 .map(SystemRole::isHasFullAccess)
+                .orElse(false);
+    }
+
+    public boolean canCreateKnowledge(String roleName) {
+        if (roleName == null || roleName.trim().isEmpty()) return false;
+        if ("ADMIN".equalsIgnoreCase(roleName.trim())) return true;
+        return systemRoleRepository.findByNameIgnoreCase(roleName.trim())
+                .map(r -> r.isHasFullAccess() || r.isCanCreateKnowledge())
                 .orElse(false);
     }
 
@@ -156,7 +167,7 @@ public class SystemRoleService {
                     .collect(Collectors.toSet());
 
             long usersWithOtherFullAccess = userRepository.findAll().stream()
-                    .filter(u -> u.getRole() != null && otherFullAccessNames.contains(u.getRole().toLowerCase()))
+                    .filter(u -> !Boolean.TRUE.equals(u.getArchived()) && u.getRole() != null && otherFullAccessNames.contains(u.getRole().toLowerCase()))
                     .count();
 
             if (usersWithOtherFullAccess == 0) {
@@ -165,6 +176,7 @@ public class SystemRoleService {
         }
 
         existing.setHasFullAccess(roleData.isHasFullAccess());
+        existing.setCanCreateKnowledge(roleData.isCanCreateKnowledge());
         existing.setAdminLevel(roleData.isHasFullAccess() ? 2 : (roleData.getAdminLevel() != null ? roleData.getAdminLevel() : 0));
 
         if (roleData.getColor() != null && !roleData.getColor().isBlank()) {
@@ -203,7 +215,7 @@ public class SystemRoleService {
                     .collect(Collectors.toSet());
 
             long usersWithOtherFullAccess = userRepository.findAll().stream()
-                    .filter(u -> u.getRole() != null && otherFullAccessNames.contains(u.getRole().toLowerCase()))
+                    .filter(u -> !Boolean.TRUE.equals(u.getArchived()) && u.getRole() != null && otherFullAccessNames.contains(u.getRole().toLowerCase()))
                     .count();
 
             if (usersWithOtherFullAccess == 0) {

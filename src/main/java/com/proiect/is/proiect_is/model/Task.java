@@ -28,18 +28,32 @@ public class Task {
     User creator;
 
     @ManyToOne
-    @JoinColumn(name = "assignee_id", nullable = false)
+    @JoinColumn(name = "assignee_id")
     User assignee;
 
     @Column(nullable = false)
     String status;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "project_id")
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "owner"})
     private Project project;
 
     @Transient
     private Long projectId;
+
+    // Coloana (bucket) din board-ul personal al asignatarului; null = prima coloană
+    @Column
+    private Long bucketId;
+
+    // Culoarea cartonașului, ex: "#fef9c3"; null = culoarea implicită
+    @Column(length = 20)
+    private String color;
+
+    public Long getBucketId() { return bucketId; }
+    public void setBucketId(Long bucketId) { this.bucketId = bucketId; }
+    public String getColor() { return color; }
+    public void setColor(String color) { this.color = color; }
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }

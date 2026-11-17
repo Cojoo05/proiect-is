@@ -133,8 +133,8 @@ function ProjectDetail({ currentUser }) {
     canInviteMembers: true,
     allowedChannels: 'ALL'
   } : {
-    canCreateTasks: assignedRole ? assignedRole.canCreateTasks : true,
-    canManageTasks: assignedRole ? assignedRole.canManageTasks : true,
+    canCreateTasks: assignedRole ? Boolean(assignedRole.canCreateTasks) : false,
+    canManageTasks: assignedRole ? Boolean(assignedRole.canManageTasks) : false,
     canCreateChannels: assignedRole ? assignedRole.canCreateChannels : false,
     canSendMessages: assignedRole ? assignedRole.canSendMessages : true,
     canCreatePolls: assignedRole ? assignedRole.canCreatePolls : true,
@@ -144,23 +144,39 @@ function ProjectDetail({ currentUser }) {
     allowedChannels: assignedRole ? assignedRole.allowedChannels : 'ALL'
   };
 
-  const handleInvite = () => {
+  const canGiveTasks = isOwner || Boolean(permissions.canCreateTasks);
+
+  const visibleTabs = TABS.filter(tab => {
+    if (tab.key === 'tasks') return canGiveTasks;
+    return true;
+  });
+
+  useEffect(() => {
+    if (activeTab === 'tasks' && !canGiveTasks && !loading) {
+      setActiveTab('feed');
+    }
+  }, [activeTab, canGiveTasks, loading]);
+
+  const handleInvite = async () => {
     if (!selectedInviteUser) return;
-    fetch(`${API}/${projectId}/invite`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: parseInt(selectedInviteUser) })
-    })
-      .then(r => {
-        if (r.ok) {
-          setShowInviteModal(false);
-          setSelectedInviteUser('');
-          alert('Invitație trimisă cu succes (valabilă 48h)!');
-        } else {
-          alert('Utilizatorul este deja în proiect sau are o invitație activă.');
-        }
-      })
-      .catch(console.error);
+    try {
+      const res = await fetch(`${API}/${projectId}/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: parseInt(selectedInviteUser) })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setShowInviteModal(false);
+        setSelectedInviteUser('');
+        alert('Invitație trimisă cu succes!');
+      } else {
+        alert(data.message || 'Eroare la trimiterea invitației.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Eroare de conexiune la server.');
+    }
   };
 
   const memberIds = new Set(members.map(m => m.user?.id));
@@ -303,7 +319,7 @@ function ProjectDetail({ currentUser }) {
 
       {/* Tab Nav */}
       <div style={{ display: 'flex', gap: '4px', borderBottom: '2px solid #e2e8f0', marginBottom: '24px' }}>
-        {TABS.map(tab => (
+        {visibleTabs.map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
@@ -336,11 +352,12 @@ function ProjectDetail({ currentUser }) {
           permissions={permissions}
         />
       )}
-      {activeTab === 'tasks' && (
+      {activeTab === 'tasks' && canGiveTasks && (
         <TasksTab
           projectId={projectId}
           currentUser={currentUser}
           members={members}
+          isOwner={isOwner}
           permissions={permissions}
         />
       )}
@@ -390,7 +407,7 @@ function ProjectDetail({ currentUser }) {
           <div style={{ backgroundColor: 'white', padding: '28px', borderRadius: '12px', width: '100%', maxWidth: '420px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)' }}>
             <h3 style={{ marginTop: 0, marginBottom: '6px', color: '#1e293b' }}>📬 Invită un utilizator în proiect</h3>
             <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#64748b' }}>
-              Invitația va apărea în panoul utilizatorului și expiră automat în 48 de ore.
+              Invitația va apărea în panoul de notificări al utilizatorului și este valabilă pe termen nedeterminat până la acceptare sau refuz.
             </p>
             <select
               value={selectedInviteUser}

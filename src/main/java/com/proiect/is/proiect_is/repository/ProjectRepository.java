@@ -11,6 +11,8 @@ import java.util.List;
 @Repository
 public interface ProjectRepository extends JpaRepository<Project, Long> {
 
+    List<Project> findByOwnerId(Long ownerId);
+
     @Query("SELECT DISTINCT p FROM Project p " +
             "LEFT JOIN ProjectMember pm ON pm.project.id = p.id " +
             "WHERE p.owner.id = :userId OR pm.user.id = :userId " +

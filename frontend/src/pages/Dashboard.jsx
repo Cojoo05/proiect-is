@@ -5,18 +5,18 @@ function Dashboard({ currentUser }) {
 
   const apps = [
     {
-      id: 'tasks',
-      title: 'Tasks',
-      icon: '✅',
-      description: 'Gestionează activitățile, termenele limită și prioritățile echipei',
-      path: '/tasks'
+      id: 'announcements',
+      title: 'Anunțuri',
+      icon: '📢',
+      description: 'Anunțurile echipei — publicate de administratori, vizibile pentru toți',
+      path: '/announcements'
     },
     {
-      id: 'calendar',
-      title: 'Calendar',
-      icon: '📅',
-      description: 'Schedule & Events',
-      path: '/calendar'
+      id: 'meeting-rooms',
+      title: 'Meeting Rooms',
+      icon: '🏢',
+      description: 'Delegare și rezervare săli pentru echipe și grupuri',
+      path: '/meeting-rooms'
     },
     {
       id: 'for-me',
@@ -38,6 +38,13 @@ function Dashboard({ currentUser }) {
       icon: '💬',
       description: 'Conversații și grupuri de comunicare în timp real',
       path: '/messages'
+    },
+    {
+      id: 'knowledge',
+      title: 'Knowledge',
+      icon: '🧠',
+      description: 'Bază de cunoștințe, documentație, imagini și materiale video',
+      path: '/knowledge'
     }
   ];
 
@@ -57,44 +64,8 @@ function Dashboard({ currentUser }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', fontFamily: 'sans-serif' }}>
-      <header
-        style={{
-          backgroundColor: '#ffffff',
-          borderBottom: '1px solid #e2e8f0',
-          padding: '16px 32px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div
-            style={{
-              width: '38px',
-              height: '38px',
-              borderRadius: '10px',
-              backgroundColor: '#5a3d5c',
-              color: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 'bold',
-              fontSize: '18px'
-            }}
-          >
-            P
-          </div>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.25rem', color: '#1e293b', fontWeight: '700' }}>Workspace</h1>
-            <span style={{ fontSize: '12px', color: '#64748b' }}>
-              Conectat ca <strong>{currentUser?.username || currentUser?.email || 'User'}</strong>
-            </span>
-          </div>
-        </div>
-      </header>
-
-      <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '40px 24px' }}>
+    <div style={{ minHeight: 'calc(100vh - 60px)', backgroundColor: '#f8fafc', fontFamily: 'sans-serif', width: '100%', boxSizing: 'border-box' }}>
+      <main style={{ width: '100%', boxSizing: 'border-box', padding: '36px 40px' }}>
         <div style={{ marginBottom: '32px' }}>
           <h2 style={{ margin: '0 0 6px 0', fontSize: '1.75rem', color: '#0f172a', fontWeight: '700' }}>
             Aplicații & Module
@@ -142,41 +113,24 @@ function Dashboard({ currentUser }) {
             >
               <div
                 style={{
-                  width: '60px',
-                  height: '60px',
-                  borderRadius: '14px',
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '12px',
                   backgroundColor: '#f6eff7',
                   color: '#5a3d5c',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: '28px',
-                  marginBottom: '16px',
-                  border: '1px solid #ebd9eb'
+                  marginBottom: '16px'
                 }}
               >
                 {app.icon}
               </div>
-
-              <h3
-                style={{
-                  margin: '0 0 6px 0',
-                  fontSize: '1.15rem',
-                  fontWeight: '600',
-                  color: '#1e293b'
-                }}
-              >
+              <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', color: '#1e293b', fontWeight: '600' }}>
                 {app.title}
               </h3>
-
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: '0.875rem',
-                  color: '#64748b',
-                  lineHeight: '1.4'
-                }}
-              >
+              <p style={{ margin: 0, fontSize: '13px', color: '#64748b', lineHeight: '1.4' }}>
                 {app.description}
               </p>
             </div>

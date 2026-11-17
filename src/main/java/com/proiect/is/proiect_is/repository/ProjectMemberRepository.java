@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Long> {
     List<ProjectMember> findByProjectId(Long projectId);
     Optional<ProjectMember> findByProjectIdAndUserId(Long projectId, Long userId);
+    List<ProjectMember> findByUserId(Long userId);
 }
