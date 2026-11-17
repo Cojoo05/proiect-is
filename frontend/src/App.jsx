@@ -11,6 +11,7 @@ import ForMeDashboard from './pages/ForMeApp/ForMeDashboard.jsx';
 import ProjectsDashboard from './pages/ProjectsDashboard.jsx';
 import NotesPage from './pages/ForMeApp/NotesPage.jsx';
 import MeetingRooms from './pages/ForMeApp/MeetingRooms.jsx';
+import AnnouncementsPage from './pages/AnnouncementsPage.jsx';
 import './App.css';
 
 function App() {
@@ -38,6 +39,7 @@ function App() {
         <Route path="/admin-panel" element={currentUser ? <AdminPanel /> : <Navigate to="/login" />} />
         <Route path="/tasks" element={currentUser ? <TasksBoard currentUser={currentUser} /> : <Navigate to="/login" />} />
         <Route path="/projects" element={currentUser ? <ProjectsDashboard currentUser={currentUser} /> : <Navigate to="/login" />} />
+        <Route path="/announcements" element={currentUser ? <AnnouncementsPage currentUser={currentUser} /> : <Navigate to="/login" />} />
       </Routes>
     </BrowserRouter>
   );

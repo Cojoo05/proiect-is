@@ -25,6 +25,13 @@ function Dashboard({ currentUser, setCurrentUser }) {
       path: '/calendar'
     },
     {
+      id: 'announcements',
+      title: 'Announcements',
+      icon: '📢',
+      description: 'Anunțurile echipei — publicate de administratori, vizibile pentru toți',
+      path: '/announcements'
+    },
+    {
       id: 'for-me',
       title: 'For Me',
       icon: '👤',
