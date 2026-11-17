@@ -103,7 +103,7 @@ function Login({ setCurrentUser }) {
               type="text"
               autoFocus
               autoComplete="username"
-              placeholder="ex: felix"
+              placeholder=""
               value={loginData.username}
               onChange={(e) => setLoginData({ ...loginData, username: e.target.value })}
               required
@@ -118,7 +118,7 @@ function Login({ setCurrentUser }) {
                 className="input"
                 type={showPassword ? 'text' : 'password'}
                 autoComplete="current-password"
-                placeholder="••••••••"
+                placeholder=""
                 value={loginData.password}
                 onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
                 required
