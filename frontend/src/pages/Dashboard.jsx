@@ -50,8 +50,8 @@ function Dashboard({ currentUser }) {
   }
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 60px)', backgroundColor: '#f8fafc', fontFamily: 'sans-serif' }}>
-      <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '40px 24px' }}>
+    <div style={{ minHeight: 'calc(100vh - 60px)', backgroundColor: '#f8fafc', fontFamily: 'sans-serif', width: '100%', boxSizing: 'border-box' }}>
+      <main style={{ width: '100%', boxSizing: 'border-box', padding: '36px 40px' }}>
         <div style={{ marginBottom: '32px' }}>
           <h2 style={{ margin: '0 0 6px 0', fontSize: '1.75rem', color: '#0f172a', fontWeight: '700' }}>
             Aplicații & Module

@@ -348,8 +348,8 @@ export default function AdminPanel({ currentUser }) {
   });
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 60px)', backgroundColor: '#f8fafc', padding: '30px 24px', fontFamily: 'sans-serif' }}>
-      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+    <div style={{ minHeight: 'calc(100vh - 60px)', backgroundColor: '#f8fafc', padding: '30px 32px', fontFamily: 'sans-serif', width: '100%', boxSizing: 'border-box' }}>
+      <div style={{ width: '100%', boxSizing: 'border-box' }}>
         
         {/* ── Top Bar / Header ───────────────────────────────────────────── */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '24px' }}>
@@ -549,11 +549,11 @@ export default function AdminPanel({ currentUser }) {
                 backgroundColor: '#ffffff',
                 borderRadius: '12px',
                 border: '1px solid #e2e8f0',
-                overflow: 'hidden',
+                overflowX: 'auto',
                 boxShadow: '0 4px 6px -1px rgba(0,0,0,0.03)',
               }}
             >
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+              <table style={{ width: '100%', minWidth: '850px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}>
                     <th onClick={() => handleSort('id')} style={{ ...thStyle, cursor: 'pointer' }}>ID ↕</th>
@@ -561,8 +561,8 @@ export default function AdminPanel({ currentUser }) {
                     <th onClick={() => handleSort('email')} style={{ ...thStyle, cursor: 'pointer' }}>Email ↕</th>
                     <th style={thStyle}>Parolă</th>
                     <th onClick={() => handleSort('role')} style={{ ...thStyle, cursor: 'pointer' }}>Rol Atribuit ↕</th>
-                    <th style={thStyle}>Google Sync</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>Acțiuni</th>
+                    <th style={{ ...thStyle, minWidth: '160px' }}>Google Sync</th>
+                    <th style={{ ...thStyle, textAlign: 'right', minWidth: '160px' }}>Acțiuni</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -610,36 +610,42 @@ export default function AdminPanel({ currentUser }) {
                             ))}
                           </select>
                         </td>
-                        <td style={tdStyle}>
+                        <td style={{ ...tdStyle, minWidth: '160px' }}>
                           {(user.googleSynced || Boolean(user.googleId)) ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'inline-flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
                               <span
+                                title={user.email}
                                 style={{
                                   fontSize: '11px',
                                   fontWeight: '700',
-                                  padding: '3px 8px',
+                                  padding: '2px 8px',
                                   borderRadius: '12px',
                                   backgroundColor: '#dcfce7',
                                   color: '#166534',
                                   display: 'inline-flex',
                                   alignItems: 'center',
                                   gap: '4px',
+                                  maxWidth: '180px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
                                 }}
                               >
-                                🟢 {user.email || 'Sincronizat'}
+                                🟢 Sincronizat
                               </span>
                               <button
                                 type="button"
                                 onClick={() => handleDesyncGoogle(user)}
                                 style={{
-                                  padding: '3px 8px',
+                                  padding: '2px 6px',
                                   backgroundColor: '#fee2e2',
                                   color: '#dc2626',
                                   border: '1px solid #fca5a5',
-                                  borderRadius: '6px',
+                                  borderRadius: '4px',
                                   cursor: 'pointer',
-                                  fontSize: '11px',
-                                  fontWeight: '700',
+                                  fontSize: '10px',
+                                  fontWeight: '600',
+                                  whiteSpace: 'nowrap',
                                 }}
                                 title="Desincronizează contul de Google"
                               >
@@ -652,7 +658,7 @@ export default function AdminPanel({ currentUser }) {
                             </span>
                           )}
                         </td>
-                        <td style={{ ...tdStyle, textAlign: 'right' }}>
+                        <td style={{ ...tdStyle, textAlign: 'right', minWidth: '160px', whiteSpace: 'nowrap' }}>
                           <button
                             onClick={() => handleEditUser(user)}
                             style={{

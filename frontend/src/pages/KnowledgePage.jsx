@@ -924,6 +924,8 @@ export default function KnowledgePage({ currentUser }) {
         padding: '28px 32px 60px',
         textAlign: 'left',
         fontFamily: 'Inter, system-ui, sans-serif',
+        width: '100%',
+        boxSizing: 'border-box',
       }}
     >
       {/* ── Top Header ────────────────────────────────────────────── */}
@@ -949,17 +951,14 @@ export default function KnowledgePage({ currentUser }) {
                 letterSpacing: '-0.02em',
               }}
             >
-              Knowledge App
+              Knowledge
             </h1>
           </div>
-          <p style={{ margin: '4px 0 0 40px', fontSize: '13px', color: '#64748b' }}>
-            Organizează documentele Google Docs, Sheets, PDF și notițele tale în foldere ierarhice
-          </p>
         </div>
 
         {/* Action Button: Add dropdown */}
         <div style={{ position: 'relative' }} ref={addMenuRef}>
-          {permissions.canWrite ? (
+          {permissions.canWrite && (
             <button
               onClick={() => setShowAddMenu(prev => !prev)}
               style={{
@@ -983,26 +982,6 @@ export default function KnowledgePage({ currentUser }) {
               <span>➕ Adaugă</span>
               <span style={{ fontSize: '11px' }}>▼</span>
             </button>
-          ) : (
-            <div
-              title={currentFolder ? "Nu ai permisiunea de a adăuga conținut în acest folder." : "Doar rolurile cu drept de creare pot adăuga elemente în Rădăcină."}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 18px',
-                backgroundColor: '#f1f5f9',
-                color: '#94a3b8',
-                border: '1px dashed #cbd5e1',
-                borderRadius: '8px',
-                fontSize: '13px',
-                fontWeight: '600',
-                cursor: 'not-allowed',
-                userSelect: 'none',
-              }}
-            >
-              <span>🔒 Fără drept de adăugare</span>
-            </div>
           )}
 
           {showAddMenu && permissions.canWrite && (
@@ -1545,7 +1524,7 @@ export default function KnowledgePage({ currentUser }) {
               }}
             >
               <span>📄</span>
-              <span>Fișiere & Notițe ({displayedItems.length})</span>
+              <span>Fișiere ({displayedItems.length})</span>
             </div>
 
             {displayedItems.length === 0 && displayedFolders.length === 0 ? (
