@@ -92,9 +92,18 @@ function ProjectsDashboard({ currentUser }) {
   return (
     <div className="page-container">
       <div className="page-header">
-        <div>
-          <h1 className="page-title">📁 Projects</h1>
-          <p className="page-subtitle">Proiectele în care ești owner sau membru.</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn btn--secondary btn--sm"
+            onClick={() => navigate('/dashboard')}
+          >
+            ⬅️ Înapoi la Dashboard
+          </button>
+          <div>
+            <h1 className="page-title">📁 Projects</h1>
+            <p className="page-subtitle">Proiectele în care ești owner sau membru.</p>
+          </div>
         </div>
 
         <button type="button" className="btn btn--primary" onClick={() => setIsModalOpen(true)}>

@@ -32,8 +32,16 @@ function ForMeDashboard() {
 
   return (
     <div className="page-container" style={{ textAlign: 'center' }}>
-      <div style={{ marginBottom: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+        <button
+          type="button"
+          className="btn btn--secondary btn--sm"
+          onClick={() => navigate('/dashboard')}
+        >
+          ⬅️ Înapoi la Dashboard
+        </button>
         <h1 className="page-title">🌙 For Me</h1>
+        <div style={{ width: '160px' }} aria-hidden="true" />
       </div>
 
       <p className="page-subtitle" style={{ marginBottom: '40px' }}>

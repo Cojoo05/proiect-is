@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useToast } from '../context/ToastContext.jsx';
 import {
   TASK_STATUSES,
@@ -14,6 +15,7 @@ const USERS_API_URL = `${API_BASE_URL}/api/users`;
 const EMPTY_TASK = { title: '', description: '', assigneeId: '', dueDate: '' };
 
 function TasksBoard({ currentUser }) {
+  const navigate = useNavigate();
   const toast = useToast();
 
   const [viewMode, setViewMode] = useState('myTasks');
@@ -143,9 +145,18 @@ function TasksBoard({ currentUser }) {
   return (
     <div className="page-container">
       <div className="page-header">
-        <div>
-          <h1 className="page-title">✅ Tasks</h1>
-          <p className="page-subtitle">Taskurile primite și cele date colegilor, organizate pe status.</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn btn--secondary btn--sm"
+            onClick={() => navigate('/dashboard')}
+          >
+            ⬅️ Înapoi la Dashboard
+          </button>
+          <div>
+            <h1 className="page-title">✅ Tasks</h1>
+            <p className="page-subtitle">Taskurile primite și cele date colegilor, organizate pe status.</p>
+          </div>
         </div>
 
         <div style={{ display: 'flex', gap: '8px' }}>

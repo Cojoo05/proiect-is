@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../context/ToastContext.jsx';
 import ConfirmDialog from '../../components/ConfirmDialog.jsx';
 import { formatShortDateTime } from '../../utils/format.js';
@@ -10,6 +11,7 @@ const API_URL = `${API_BASE_URL}/api/notes`;
 const isNotePinned = (note) => Boolean(note.isPinned ?? note.pinned);
 
 function NotesPage({ currentUser }) {
+  const navigate = useNavigate();
   const toast = useToast();
 
   const [notes, setNotes] = useState([]);
@@ -201,9 +203,18 @@ function NotesPage({ currentUser }) {
   return (
     <div className="page-container" onClick={() => setMenuOpenId(null)}>
       <div className="page-header">
-        <div>
-          <h1 className="page-title">📝 Notes</h1>
-          <p className="page-subtitle">Notițele tale personale. Salvare automată, prima linie devine titlul.</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn btn--secondary btn--sm"
+            onClick={() => navigate('/for-me')}
+          >
+            ⬅️ Înapoi la For Me
+          </button>
+          <div>
+            <h1 className="page-title">📝 Notes</h1>
+            <p className="page-subtitle">Notițele tale personale. Salvare automată, prima linie devine titlul.</p>
+          </div>
         </div>
 
         {!selectedNote && (

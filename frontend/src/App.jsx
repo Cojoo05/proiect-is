@@ -28,7 +28,9 @@ function AuthLayout({ currentUser, setCurrentUser }) {
   return (
     <>
       <TopBar currentUser={currentUser} setCurrentUser={setCurrentUser} />
-      <Outlet context={{ currentUser, setCurrentUser }} />
+      <main className="app-main">
+        <Outlet context={{ currentUser, setCurrentUser }} />
+      </main>
     </>
   );
 }

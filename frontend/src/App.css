@@ -89,6 +89,9 @@
 
 .app-main {
   min-height: calc(100vh - 57px);
+  /* TopBar este fixed în colțul din dreapta sus (top: 16px, înălțime 38px).
+     Rezervăm spațiu aici ca headerul paginii să nu ajungă sub butoanele lui. */
+  padding-top: 56px;
 }
 
 .page-container {

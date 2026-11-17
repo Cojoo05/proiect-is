@@ -240,6 +240,32 @@ export default function TopBar({ currentUser, setCurrentUser }) {
         gap: '8px',
       }}
     >
+      {/* ── Home / Dashboard ──────────────────────────────────────────── */}
+      <button
+        onClick={() => navigate('/dashboard')}
+        title="Înapoi la Dashboard"
+        aria-label="Înapoi la Dashboard"
+        style={{
+          width: '38px',
+          height: '38px',
+          borderRadius: '50%',
+          border: '1px solid #e2e8f0',
+          backgroundColor: '#ffffff',
+          color: '#475569',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '17px',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+          padding: 0,
+        }}
+        onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+        onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#ffffff')}
+      >
+        🏠
+      </button>
+
       {/* ── Bell ───────────────────────────────────────────────────────── */}
       <div ref={dropdownRef} style={{ position: 'relative' }}>
         <button

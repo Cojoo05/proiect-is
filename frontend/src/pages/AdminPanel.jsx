@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import { API_BASE_URL } from '../config';
 
@@ -13,6 +14,8 @@ const COLOR_PRESETS = [
 ];
 
 export default function AdminPanel({ currentUser }) {
+  const navigate = useNavigate();
+
   // Active tab: 'users' | 'roles'
   const [activeTab, setActiveTab] = useState('users');
 
@@ -285,7 +288,14 @@ export default function AdminPanel({ currentUser }) {
       <div>
         
         {/* ── Top Bar / Header ───────────────────────────────────────────── */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <button
+            type="button"
+            className="btn btn--secondary btn--sm"
+            onClick={() => navigate('/dashboard')}
+          >
+            ⬅️ Înapoi la Dashboard
+          </button>
           <div style={{ textAlign: 'right' }}>
             <span style={{ fontSize: '12px', color: '#64748b' }}>Conectat ca Admin:</span>{' '}
             <strong style={{ color: '#1e293b' }}>{currentUser?.username || 'Admin'}</strong>

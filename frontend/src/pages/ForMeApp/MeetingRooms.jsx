@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../context/ToastContext.jsx';
 import ConfirmDialog from '../../components/ConfirmDialog.jsx';
 import Modal from '../../components/Modal.jsx';
@@ -39,6 +40,7 @@ function loadReservations() {
 }
 
 function MeetingRooms({ currentUser }) {
+  const navigate = useNavigate();
   const toast = useToast();
 
   const [rooms, setRooms] = useState(loadRooms);
@@ -125,9 +127,18 @@ function MeetingRooms({ currentUser }) {
   return (
     <div className="page-container">
       <div className="page-header">
-        <div>
-          <h1 className="page-title">🏢 Săli de ședință</h1>
-          <p className="page-subtitle">Adaugă săli și rezervă-le pentru întâlniri.</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn btn--secondary btn--sm"
+            onClick={() => navigate('/dashboard')}
+          >
+            ⬅️ Înapoi la Dashboard
+          </button>
+          <div>
+            <h1 className="page-title">🏢 Săli de ședință</h1>
+            <p className="page-subtitle">Adaugă săli și rezervă-le pentru întâlniri.</p>
+          </div>
         </div>
 
         <button
