@@ -5,3 +5,7 @@ export const API_BASE_URL =
     : 'https://proiect-is-backend.onrender.com');
 
 export const WS_BASE_URL = `${API_BASE_URL}/ws`;
+
+export const GOOGLE_CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  '581947728431-1lqjbaf8ae86ig53pg7do170mdpmlgrd.apps.googleusercontent.com';

@@ -1,6 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import { API_BASE_URL } from '../config';
 
 const COLOR_PRESETS = [
@@ -19,10 +18,6 @@ export default function AdminPanel({ currentUser }) {
   // Active tab: 'users' | 'roles'
   const [activeTab, setActiveTab] = useState('users');
 
-  // Deletion confirmation
-  const [pendingDelete, setPendingDelete] = useState(null);
-  const [deleting, setDeleting] = useState(false);
-
   // Users state
   const [users, setUsers] = useState([]);
   const [userFormData, setUserFormData] = useState({ username: '', email: '', password: '', role: 'User' });
@@ -38,9 +33,18 @@ export default function AdminPanel({ currentUser }) {
     adminLevel: 0,
     color: '#5a3d5c',
     isDefault: false,
+    canCreateKnowledge: true,
   });
   const [editingRoleId, setEditingRoleId] = useState(null);
   const [showRoleModal, setShowRoleModal] = useState(false);
+
+  // Project Transfer modal state when deleting an owner
+  const [transferModal, setTransferModal] = useState({
+    isOpen: false,
+    user: null,
+    ownedProjects: [],
+    transfers: {},
+  });
 
   // Status message
   const [statusMessage, setStatusMessage] = useState(null);
@@ -143,7 +147,59 @@ export default function AdminPanel({ currentUser }) {
   };
 
   const handleDeleteUser = async (id, username) => {
-    setPendingDelete({ kind: 'user', id, label: username });
+    try {
+      // 1. Verificăm dacă utilizatorul deține proiecte
+      const summaryRes = await fetch(`${USERS_API}/${id}/projects-summary`);
+      const ownedProjects = summaryRes.ok ? await summaryRes.json() : [];
+
+      if (Array.isArray(ownedProjects) && ownedProjects.length > 0) {
+        // Pre-selectăm administratorul curent ca opțiune implicită
+        const initialTransfers = {};
+        ownedProjects.forEach(p => {
+          initialTransfers[p.id] = currentUser?.id || '';
+        });
+
+        setTransferModal({
+          isOpen: true,
+          user: { id, username },
+          ownedProjects,
+          transfers: initialTransfers,
+        });
+        return;
+      }
+
+      // Dacă nu deține proiecte, confirmare simplă
+      if (!window.confirm(`Ești sigur că vrei să ștergi utilizatorul "${username}"?`)) return;
+
+      await executeDeleteUser(id, {});
+    } catch (err) {
+      showStatus(err.message, "error");
+    }
+  };
+
+  const executeDeleteUser = async (id, projectTransfers) => {
+    try {
+      const res = await fetch(`${USERS_API}/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adminUserId: currentUser?.id,
+          projectTransfers: projectTransfers || {},
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.message || "Eroare la ștergerea utilizatorului!");
+      }
+
+      showStatus("Utilizator arhivat și date curățate cu succes!", "success");
+      setTransferModal({ isOpen: false, user: null, ownedProjects: [], transfers: {} });
+      fetchUsers();
+      fetchRoles();
+    } catch (err) {
+      showStatus(err.message, "error");
+    }
   };
 
   const handleQuickChangeRole = async (userId, newRole) => {
@@ -175,6 +231,27 @@ export default function AdminPanel({ currentUser }) {
     }
   };
 
+  // ── Desincronizare Google (Admin only) ──────────────────────────────────────
+  const handleDesyncGoogle = async (targetUser) => {
+    if (!window.confirm(`Ești sigur că vrei să desincronizezi contul Google al utilizatorului "${targetUser.username}"?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`${USERS_API}/${targetUser.id}/desync-google?adminId=${currentUser?.id}`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        showStatus(`Contul Google al utilizatorului ${targetUser.username} a fost desincronizat cu succes!`, "success");
+        fetchUsers();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showStatus(err.message || "Eroare la desincronizarea contului Google.", "error");
+      }
+    } catch (err) {
+      showStatus("Eroare la comunicarea cu serverul.", "error");
+    }
+  };
+
   // ── Role CRUD ──────────────────────────────────────────────────────────────
   const handleOpenNewRoleModal = () => {
     setRoleFormData({
@@ -183,6 +260,7 @@ export default function AdminPanel({ currentUser }) {
       adminLevel: 0,
       color: '#5a3d5c',
       isDefault: false,
+      canCreateKnowledge: true,
     });
     setEditingRoleId(null);
     setShowRoleModal(true);
@@ -195,6 +273,7 @@ export default function AdminPanel({ currentUser }) {
       adminLevel: role.adminLevel || 0,
       color: role.color || '#5a3d5c',
       isDefault: Boolean(role.isDefault),
+      canCreateKnowledge: role.canCreateKnowledge !== false,
     });
     setEditingRoleId(role.id);
     setShowRoleModal(true);
@@ -232,38 +311,23 @@ export default function AdminPanel({ currentUser }) {
   };
 
   const handleDeleteRole = async (role) => {
-    setPendingDelete({ kind: 'role', id: role.id, label: role.name });
-  };
-
-  const confirmDelete = async () => {
-    if (!pendingDelete) return;
-
-    setDeleting(true);
+    if (!window.confirm(`Ești sigur că vrei să ștergi rolul "${role.name}"?\n(Dacă există utilizatori asociați, aceștia vor fi transferați pe rolul implicit)`)) {
+      return;
+    }
 
     try {
-      const isUser = pendingDelete.kind === 'user';
-      const res = await fetch(`${isUser ? USERS_API : ROLES_API}/${pendingDelete.id}`, { method: 'DELETE' });
+      const res = await fetch(`${ROLES_API}/${role.id}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(
-          data.message || (isUser ? 'Eroare la ștergerea utilizatorului!' : 'Eroare la ștergerea rolului!')
-        );
+        throw new Error(data.message || "Eroare la ștergerea rolului!");
       }
 
-      showStatus(
-        isUser
-          ? 'Utilizator șters cu succes!'
-          : `Rolul "${pendingDelete.label}" a fost șters cu succes!`,
-        'success'
-      );
-      fetchUsers();
+      showStatus(`Rolul "${role.name}" a fost șters cu succes!`, "success");
       fetchRoles();
-      setPendingDelete(null);
+      fetchUsers();
     } catch (err) {
-      showStatus(err.message, 'error');
-    } finally {
-      setDeleting(false);
+      showStatus(err.message, "error");
     }
   };
 
@@ -284,18 +348,11 @@ export default function AdminPanel({ currentUser }) {
   });
 
   return (
-    <div className="page-container">
-      <div>
+    <div style={{ minHeight: 'calc(100vh - 60px)', backgroundColor: '#f8fafc', padding: '30px 32px', fontFamily: 'sans-serif', width: '100%', boxSizing: 'border-box' }}>
+      <div style={{ width: '100%', boxSizing: 'border-box' }}>
         
         {/* ── Top Bar / Header ───────────────────────────────────────────── */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <button
-            type="button"
-            className="btn btn--secondary btn--sm"
-            onClick={() => navigate('/dashboard')}
-          >
-            ⬅️ Înapoi la Dashboard
-          </button>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '24px' }}>
           <div style={{ textAlign: 'right' }}>
             <span style={{ fontSize: '12px', color: '#64748b' }}>Conectat ca Admin:</span>{' '}
             <strong style={{ color: '#1e293b' }}>{currentUser?.username || 'Admin'}</strong>
@@ -492,11 +549,11 @@ export default function AdminPanel({ currentUser }) {
                 backgroundColor: '#ffffff',
                 borderRadius: '12px',
                 border: '1px solid #e2e8f0',
-                overflow: 'hidden',
+                overflowX: 'auto',
                 boxShadow: '0 4px 6px -1px rgba(0,0,0,0.03)',
               }}
             >
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+              <table style={{ width: '100%', minWidth: '850px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}>
                     <th onClick={() => handleSort('id')} style={{ ...thStyle, cursor: 'pointer' }}>ID ↕</th>
@@ -504,7 +561,8 @@ export default function AdminPanel({ currentUser }) {
                     <th onClick={() => handleSort('email')} style={{ ...thStyle, cursor: 'pointer' }}>Email ↕</th>
                     <th style={thStyle}>Parolă</th>
                     <th onClick={() => handleSort('role')} style={{ ...thStyle, cursor: 'pointer' }}>Rol Atribuit ↕</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>Acțiuni</th>
+                    <th style={{ ...thStyle, minWidth: '160px' }}>Google Sync</th>
+                    <th style={{ ...thStyle, textAlign: 'right', minWidth: '160px' }}>Acțiuni</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -552,7 +610,55 @@ export default function AdminPanel({ currentUser }) {
                             ))}
                           </select>
                         </td>
-                        <td style={{ ...tdStyle, textAlign: 'right' }}>
+                        <td style={{ ...tdStyle, minWidth: '160px' }}>
+                          {(user.googleSynced || Boolean(user.googleId)) ? (
+                            <div style={{ display: 'inline-flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                              <span
+                                title={user.email}
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                  padding: '2px 8px',
+                                  borderRadius: '12px',
+                                  backgroundColor: '#dcfce7',
+                                  color: '#166534',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  maxWidth: '180px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                🟢 Sincronizat
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleDesyncGoogle(user)}
+                                style={{
+                                  padding: '2px 6px',
+                                  backgroundColor: '#fee2e2',
+                                  color: '#dc2626',
+                                  border: '1px solid #fca5a5',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '10px',
+                                  fontWeight: '600',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title="Desincronizează contul de Google"
+                              >
+                                🔗 Desincronizează
+                              </button>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>
+                              Nesincronizat
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right', minWidth: '160px', whiteSpace: 'nowrap' }}>
                           <button
                             onClick={() => handleEditUser(user)}
                             style={{
@@ -590,7 +696,7 @@ export default function AdminPanel({ currentUser }) {
                   })}
                   {sortedUsers.length === 0 && (
                     <tr>
-                      <td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>
+                      <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>
                         Niciun utilizator găsit.
                       </td>
                     </tr>
@@ -690,6 +796,10 @@ export default function AdminPanel({ currentUser }) {
                       </div>
                       <div style={{ fontSize: '13px', color: '#64748b' }}>
                         👥 Utilizatori alocați: <strong style={{ color: '#1e293b' }}>{role.userCount ?? 0}</strong>
+                      </div>
+                      <div style={{ fontSize: '12px', color: role.canCreateKnowledge !== false ? '#16a34a' : '#64748b', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '6px' }}>
+                        <span>{role.canCreateKnowledge !== false ? '✅' : '❌'}</span>
+                        <span>{role.canCreateKnowledge !== false ? 'Poate crea notițe în Knowledge' : 'Fără drept de creare în Knowledge'}</span>
                       </div>
                     </div>
                   </div>
@@ -817,6 +927,26 @@ export default function AdminPanel({ currentUser }) {
                   </label>
                 </div>
 
+                {/* Can Create Knowledge Checkbox */}
+                <div style={{ marginBottom: '18px', padding: '12px 14px', backgroundColor: roleFormData.canCreateKnowledge ? '#f0fdf4' : '#f8fafc', borderRadius: '8px', border: `1px solid ${roleFormData.canCreateKnowledge ? '#bbf7d0' : '#e2e8f0'}` }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={roleFormData.canCreateKnowledge}
+                      onChange={(e) => setRoleFormData({ ...roleFormData, canCreateKnowledge: e.target.checked })}
+                      style={{ marginTop: '3px', cursor: 'pointer' }}
+                    />
+                    <div>
+                      <strong style={{ fontSize: '13px', color: roleFormData.canCreateKnowledge ? '#166534' : '#1e293b' }}>
+                        🧠 Poate crea notițe în Knowledge
+                      </strong>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                        Permite utilizatorilor cu acest rol să creeze notițe noi în aplicația Knowledge.
+                      </div>
+                    </div>
+                  </label>
+                </div>
+
                 {/* Color Selection */}
                 <div style={{ marginBottom: '16px' }}>
                   <label style={labelStyle}>Culoare Rol</label>
@@ -903,23 +1033,145 @@ export default function AdminPanel({ currentUser }) {
           </div>
         )}
 
-      </div>
+        {/* Modal: Transfer Ownership Proiecte */}
+        {transferModal.isOpen && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(15, 23, 42, 0.6)',
+              backdropFilter: 'blur(4px)',
+              zIndex: 10000,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '20px',
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: '#ffffff',
+                borderRadius: '16px',
+                width: '100%',
+                maxWidth: '560px',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+                border: '1px solid #e2e8f0',
+                padding: '28px',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>
+                    👑 Transferă Proprietatea Proiectelor
+                  </h3>
+                  <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#64748b' }}>
+                    Utilizatorul <strong>{transferModal.user?.username}</strong> deține următoarele proiecte.
+                    Selectează persoana care va prelua ownership-ul fiecărui proiect:
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTransferModal({ isOpen: false, user: null, ownedProjects: [], transfers: {} })}
+                  style={{ background: 'none', border: 'none', fontSize: '20px', color: '#94a3b8', cursor: 'pointer' }}
+                >
+                  ✕
+                </button>
+              </div>
 
-      <ConfirmDialog
-        open={Boolean(pendingDelete)}
-        title={pendingDelete?.kind === 'role' ? 'Ștergi rolul?' : 'Ștergi utilizatorul?'}
-        message={
-          pendingDelete
-            ? pendingDelete.kind === 'role'
-              ? `Rolul „${pendingDelete.label}" va fi șters. Utilizatorii asociați vor fi mutați pe rolul implicit.`
-              : `Utilizatorul „${pendingDelete.label}" va fi șters definitiv.`
-            : ''
-        }
-        confirmLabel={pendingDelete?.kind === 'role' ? 'Șterge rolul' : 'Șterge utilizatorul'}
-        loading={deleting}
-        onConfirm={confirmDelete}
-        onCancel={() => setPendingDelete(null)}
-      />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', margin: '20px 0' }}>
+                {transferModal.ownedProjects.map(proj => (
+                  <div
+                    key={proj.id}
+                    style={{
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '10px',
+                      padding: '16px',
+                      backgroundColor: '#f8fafc',
+                    }}
+                  >
+                    <div style={{ fontWeight: '600', fontSize: '14px', color: '#1e293b', marginBottom: '8px' }}>
+                      📁 {proj.name}
+                    </div>
+                    <label style={{ fontSize: '12px', fontWeight: '500', color: '#475569', display: 'block', marginBottom: '6px' }}>
+                      Noul Proprietar (Owner):
+                    </label>
+                    <select
+                      value={transferModal.transfers[proj.id] || currentUser?.id || ''}
+                      onChange={e => {
+                        const val = Number(e.target.value);
+                        setTransferModal(prev => ({
+                          ...prev,
+                          transfers: { ...prev.transfers, [proj.id]: val },
+                        }));
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '8px',
+                        fontSize: '13px',
+                        backgroundColor: '#ffffff',
+                        color: '#0f172a',
+                        fontWeight: '500',
+                      }}
+                    >
+                      <option value={currentUser?.id}>
+                        ⭐ Tu ({currentUser?.username || 'Administrator'}) {proj.members.some(m => m.id === currentUser?.id) ? '(deja membru)' : '(vei fi adăugat automat)'}
+                      </option>
+                      {proj.members.map(m => (
+                        <option key={m.id} value={m.id}>
+                          👤 {m.username} ({m.email})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px' }}>
+                <button
+                  type="button"
+                  onClick={() => setTransferModal({ isOpen: false, user: null, ownedProjects: [], transfers: {} })}
+                  style={{
+                    padding: '9px 16px',
+                    backgroundColor: '#ffffff',
+                    color: '#475569',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                  }}
+                >
+                  Anulează
+                </button>
+                <button
+                  type="button"
+                  onClick={() => executeDeleteUser(transferModal.user?.id, transferModal.transfers)}
+                  style={{
+                    padding: '9px 20px',
+                    backgroundColor: '#dc2626',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                  }}
+                >
+                  Transferă și Șterge Contul
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }

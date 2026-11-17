@@ -7,4 +7,5 @@ import java.util.List;
 public interface FeedMessageRepository extends JpaRepository<FeedMessage, Long> {
     List<FeedMessage> findByChannelIdOrderBySentAtAsc(Long channelId);
     List<FeedMessage> findByProjectIdOrderBySentAtAsc(Long projectId);
+    List<FeedMessage> findBySenderId(Long senderId);
 }

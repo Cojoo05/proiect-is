@@ -31,21 +31,13 @@ function ForMeDashboard() {
   };
 
   return (
-    <div className="page-container" style={{ textAlign: 'center' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-        <button
-          type="button"
-          className="btn btn--secondary btn--sm"
-          onClick={() => navigate('/dashboard')}
-        >
-          ⬅️ Înapoi la Dashboard
-        </button>
-        <h1 className="page-title">🌙 For Me</h1>
-        <div style={{ width: '160px' }} aria-hidden="true" />
+    <div style={{ padding: '40px', fontFamily: 'sans-serif', textAlign: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', maxWidth: '1000px', margin: '0 auto', marginBottom: '20px' }}>
+        <h1 style={{ fontSize: '2.5rem', margin: 0, color: '#1e293b' }}>🌙 For Me</h1>
       </div>
-
-      <p className="page-subtitle" style={{ marginBottom: '40px' }}>
-        Spațiul tău personal de organizare, notițe și alerte zilnice.
+      
+      <p style={{ color: '#64748b', marginBottom: '40px', fontSize: '15px' }}>
+        Spațiul tău personal de organizare, notițe și alerte zilnice:
       </p>
       
       <div style={{ display: 'flex', justifyContent: 'center', gap: '25px', flexWrap: 'wrap', maxWidth: '1100px', margin: '0 auto' }}>

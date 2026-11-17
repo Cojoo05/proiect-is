@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { API_BASE_URL, WS_BASE_URL } from '../config.js';
 import SockJS from 'sockjs-client/dist/sockjs.min.js';
 import { Client } from '@stomp/stompjs';
@@ -8,11 +8,13 @@ const POLL_INTERVAL = 15_000;
 
 export default function TopBar({ currentUser, setCurrentUser }) {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [invitations, setInvitations] = useState([]);
   const [recentConversations, setRecentConversations] = useState([]);
+  const [calendarNotifs, setCalendarNotifs] = useState([]);
 
   // Map of convId -> lastMsgId that the user has marked as read
   const [readMsgIds, setReadMsgIds] = useState(() => {
@@ -63,7 +65,26 @@ export default function TopBar({ currentUser, setCurrentUser }) {
   }, [currentUser?.id, readMsgIds]);
 
   const unreadMsgCount = recentConversations.filter(isConvUnread).length;
-  const totalCount = invitations.length + unreadMsgCount;
+  const totalCount = invitations.length + unreadMsgCount + calendarNotifs.length;
+
+  // ── Fetch calendar notifications ─────────────────────────────────────────
+  const fetchCalendarNotifs = useCallback(async () => {
+    if (!currentUser?.id) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/notifications/user/${currentUser.id}/unread`);
+      if (res.ok) {
+        const data = await res.json();
+        setCalendarNotifs(Array.isArray(data) ? data : []);
+      }
+    } catch (_) {}
+  }, [currentUser?.id]);
+
+  const handleMarkNotifRead = async (notifId) => {
+    try {
+      await fetch(`${API_BASE_URL}/api/notifications/${notifId}/read`, { method: 'PUT' });
+      setCalendarNotifs(prev => prev.filter(n => n.id !== notifId));
+    } catch (_) {}
+  };
 
   // ── Fetch pending invitations ──────────────────────────────────────────────
   const fetchInvitations = useCallback(async () => {
@@ -112,12 +133,14 @@ export default function TopBar({ currentUser, setCurrentUser }) {
     if (!currentUser?.id) return;
     fetchInvitations();
     fetchRecentMessages();
+    fetchCalendarNotifs();
     const timer = setInterval(() => {
       fetchInvitations();
       fetchRecentMessages();
+      fetchCalendarNotifs();
     }, POLL_INTERVAL);
     return () => clearInterval(timer);
-  }, [fetchInvitations, fetchRecentMessages, currentUser?.id]);
+  }, [fetchInvitations, fetchRecentMessages, fetchCalendarNotifs, currentUser?.id]);
 
   // ── WebSocket for real-time message events ─────────────────────────────────
   useEffect(() => {
@@ -134,6 +157,9 @@ export default function TopBar({ currentUser, setCurrentUser }) {
           client.subscribe(`/topic/users/${currentUser.id}/invitations`, () => {
             fetchInvitations();
           });
+          client.subscribe(`/topic/users/${currentUser.id}/notifications`, () => {
+            fetchCalendarNotifs();
+          });
         },
         onStompError: () => {},
       });
@@ -143,7 +169,7 @@ export default function TopBar({ currentUser, setCurrentUser }) {
     return () => {
       try { stompClientRef.current?.deactivate(); } catch (_) {}
     };
-  }, [currentUser?.id, fetchRecentMessages]);
+  }, [currentUser?.id, fetchRecentMessages, fetchInvitations, fetchCalendarNotifs]);
 
   // ── Close dropdowns on outside click ─────────────────────────────────────
   useEffect(() => {
@@ -229,43 +255,108 @@ export default function TopBar({ currentUser, setCurrentUser }) {
   };
 
   return (
+    <>
+    {/* Spacer: keeps page content below the fixed bar */}
+    <div style={{ height: '60px' }} />
     <div
       style={{
         position: 'fixed',
-        top: '16px',
-        right: '24px',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: '60px',
+        boxSizing: 'border-box',
+        padding: '0 24px',
+        backgroundColor: '#e5e7eb',
+        borderBottom: '1px solid #cbd5e1',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
         zIndex: 9999,
         display: 'flex',
         alignItems: 'center',
-        gap: '8px',
+        justifyContent: 'space-between',
       }}
     >
-      {/* ── Home / Dashboard ──────────────────────────────────────────── */}
-      <button
-        onClick={() => navigate('/dashboard')}
-        title="Înapoi la Dashboard"
-        aria-label="Înapoi la Dashboard"
-        style={{
-          width: '38px',
-          height: '38px',
-          borderRadius: '50%',
-          border: '1px solid #e2e8f0',
-          backgroundColor: '#ffffff',
-          color: '#475569',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '17px',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-          padding: 0,
-        }}
-        onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
-        onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#ffffff')}
-      >
-        🏠
-      </button>
+      {/* ── Left Branding Badge & Back to Dashboard ──────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div
+          onClick={() => navigate('/dashboard')}
+          title="Mergi la Dashboard"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            cursor: 'pointer',
+            userSelect: 'none',
+          }}
+        >
+          <div
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
+              backgroundColor: '#5a3d5c',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 'bold',
+              fontSize: '18px',
+              boxShadow: '0 2px 5px rgba(90, 61, 92, 0.25)',
+              flexShrink: 0,
+            }}
+          >
+            P
+          </div>
+          <span
+            style={{
+              margin: 0,
+              fontSize: '1.2rem',
+              color: '#0f172a',
+              fontWeight: '700',
+              lineHeight: '1.2',
+              letterSpacing: '-0.01em',
+            }}
+          >
+            Workspace
+          </span>
+        </div>
 
+        {location.pathname !== '/dashboard' && (
+          <button
+            onClick={() => navigate('/dashboard')}
+            title="Înapoi la Dashboard"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              backgroundColor: '#ffffff',
+              color: '#334155',
+              border: '1px solid #cbd5e1',
+              borderRadius: '6px',
+              fontSize: '13px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.backgroundColor = '#f1f5f9';
+              e.currentTarget.style.borderColor = '#94a3b8';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.backgroundColor = '#ffffff';
+              e.currentTarget.style.borderColor = '#cbd5e1';
+            }}
+          >
+            <span style={{ fontSize: '13px' }}>⬅️</span>
+            <span>Dashboard</span>
+          </button>
+        )}
+      </div>
+
+      {/* ── Right Actions (Bell + Profile) ─────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
       {/* ── Bell ───────────────────────────────────────────────────────── */}
       <div ref={dropdownRef} style={{ position: 'relative' }}>
         <button
@@ -361,6 +452,92 @@ export default function TopBar({ currentUser, setCurrentUser }) {
 
             {/* Body */}
             <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
+
+                            {/* Notifications */}
+              {calendarNotifs.length > 0 && (
+                <div>
+                  {calendarNotifs.filter(n => n.type === 'task_assigned').length > 0 && (
+                    <div>
+                      <div style={sectionLabelStyle}>Task-uri Atribuite</div>
+                      {calendarNotifs.filter(n => n.type === 'task_assigned').map(n => (
+                        <div key={n.id} style={notifRowStyle}>
+                          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                            <span style={{ fontSize: '20px', flexShrink: 0 }}>📋</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={notifTitleStyle}>{n.title}</div>
+                              <div style={notifSubStyle}>{n.message}</div>
+                              {n.createdAt && (
+                                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px' }}>
+                                  🕒 {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '8px', paddingLeft: '30px' }}>
+                            <button
+                              onClick={() => {
+                                handleMarkNotifRead(n.id);
+                                setOpen(false);
+                                navigate('/tasks');
+                              }}
+                              style={acceptBtnStyle}
+                            >
+                              📋 Vezi Task-uri
+                            </button>
+                            <button
+                              onClick={() => handleMarkNotifRead(n.id)}
+                              style={declineBtnStyle}
+                            >
+                              Marchează citit
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {calendarNotifs.filter(n => n.type !== 'task_assigned').length > 0 && (
+                    <div>
+                      <div style={sectionLabelStyle}>Invitații Ședințe Google Meet</div>
+                      {calendarNotifs.filter(n => n.type !== 'task_assigned').map(n => (
+                        <div key={n.id} style={notifRowStyle}>
+                          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                            <span style={{ fontSize: '20px', flexShrink: 0 }}>🎥</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={notifTitleStyle}>{n.title}</div>
+                              <div style={notifSubStyle}>{n.message}</div>
+                              {n.eventDate && (
+                                <div style={{ fontSize: '11px', color: '#2563eb', fontWeight: '700', marginTop: '3px' }}>
+                                  📅 {n.eventDate} {n.eventStartTime ? `la ${n.eventStartTime}` : ''}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '8px', paddingLeft: '30px' }}>
+                            {n.meetLink && (
+                              <a
+                                href={n.meetLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ ...acceptBtnStyle, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                onClick={() => handleMarkNotifRead(n.id)}
+                              >
+                                🎥 Intră în Meet
+                              </a>
+                            )}
+                            <button
+                              onClick={() => handleMarkNotifRead(n.id)}
+                              style={declineBtnStyle}
+                            >
+                              Marchează citit
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Invitations */}
               {invitations.length > 0 && (
@@ -604,6 +781,110 @@ export default function TopBar({ currentUser, setCurrentUser }) {
             {/* Menu items */}
             <div style={{ padding: '6px 0' }}>
               <button
+                onClick={() => {
+                  setProfileOpen(false);
+                  navigate('/calendar');
+                }}
+                style={{
+                  width: '100%',
+                  padding: '9px 16px',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#1e293b',
+                  fontWeight: '600',
+                  textAlign: 'left',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                <span style={{ fontSize: '15px' }}>📅</span>
+                Calendar
+              </button>
+              <button
+                onClick={() => {
+                  setProfileOpen(false);
+                  navigate('/tasks');
+                }}
+                style={{
+                  width: '100%',
+                  padding: '9px 16px',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#1e293b',
+                  fontWeight: '500',
+                  textAlign: 'left',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                <span style={{ fontSize: '15px' }}>✅</span>
+                Tasks
+              </button>
+              <button
+                onClick={() => {
+                  setProfileOpen(false);
+                  navigate('/announcements');
+                }}
+                style={{
+                  width: '100%',
+                  padding: '9px 16px',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#1e293b',
+                  fontWeight: '500',
+                  textAlign: 'left',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                <span style={{ fontSize: '15px' }}>📢</span>
+                Anunțuri
+              </button>
+              <button
+                onClick={() => {
+                  setProfileOpen(false);
+                  navigate('/settings');
+                }}
+                style={{
+                  width: '100%',
+                  padding: '9px 16px',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#1e293b',
+                  fontWeight: '500',
+                  textAlign: 'left',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                <span style={{ fontSize: '15px' }}>⚙️</span>
+                Settings
+              </button>
+              <button
                 onClick={handleLogout}
                 style={{
                   width: '100%',
@@ -630,7 +911,9 @@ export default function TopBar({ currentUser, setCurrentUser }) {
           </div>
         )}
       </div>
+      </div>
     </div>
+    </>
   );
 }
 

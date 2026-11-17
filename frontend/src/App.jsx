@@ -19,6 +19,8 @@ import MeetingRooms from './pages/ForMeApp/MeetingRooms.jsx';
 import AnnouncementsPage from './pages/AnnouncementsPage.jsx';
 import NotFound from './pages/NotFound.jsx';
 import Calendar from './pages/Calendar.jsx';
+import Settings from './pages/Settings.jsx';
+import KnowledgePage from './pages/KnowledgePage.jsx';
 import TopBar from './components/TopBar.jsx';
 
 import './App.css';
@@ -49,7 +51,7 @@ function App() {
         <Routes>
           {/* Public routes — no TopBar */}
           <Route path="/login" element={currentUser ? <Navigate to="/dashboard" /> : <Login setCurrentUser={setCurrentUser} />} />
-          <Route path="/register" element={<Register />} />
+          <Route path="/register" element={<Register setCurrentUser={setCurrentUser} />} />
 
           {/* Root redirect */}
           <Route path="/" element={<Navigate to={currentUser ? '/dashboard' : '/login'} />} />
@@ -62,16 +64,18 @@ function App() {
                 : <Navigate to="/login" />
             }
           >
-            <Route path="/dashboard" element={<Dashboard currentUser={currentUser} />} />
+            <Route path="/dashboard" element={<Dashboard currentUser={currentUser} setCurrentUser={setCurrentUser} />} />
             <Route
               path="/admin-panel"
               element={isAdmin ? <AdminPanel currentUser={currentUser} /> : <Navigate to="/dashboard" replace />}
             />
             <Route path="/tasks" element={<TasksBoard currentUser={currentUser} />} />
+            <Route path="/settings" element={<Settings currentUser={currentUser} setCurrentUser={setCurrentUser} />} />
             <Route path="/projects" element={<ProjectsDashboard currentUser={currentUser} />} />
             <Route path="/projects/:projectId" element={<ProjectDetail currentUser={currentUser} />} />
             <Route path="/messages" element={<MessagesPage currentUser={currentUser} />} />
             <Route path="/calendar" element={<Calendar currentUser={currentUser} />} />
+            <Route path="/knowledge" element={<KnowledgePage currentUser={currentUser} />} />
             <Route path="/announcements" element={<AnnouncementsPage currentUser={currentUser} />} />
             <Route path="/meeting-rooms" element={<MeetingRooms currentUser={currentUser} />} />
             <Route path="/for-me" element={<ForMeDashboard />} />
