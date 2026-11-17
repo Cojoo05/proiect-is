@@ -3,8 +3,9 @@ import { useToast } from '../context/ToastContext.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import { formatDateTime } from '../utils/format.js';
 import { isAdminUser } from '../theme.js';
+import { API_BASE_URL } from '../config';
 
-const API_URL = 'http://localhost:8080/api/announcements';
+const API_URL = `${API_BASE_URL}/api/announcements`;
 
 const EMPTY_FORM = { title: '', content: '', pinned: false };
 

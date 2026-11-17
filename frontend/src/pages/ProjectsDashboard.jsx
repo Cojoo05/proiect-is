@@ -1,26 +1,24 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useToast } from '../context/ToastContext.jsx';
 import Modal from '../components/Modal.jsx';
-import { formatDate, formatTimeLeft } from '../utils/format.js';
+import { formatDate } from '../utils/format.js';
 import { colors, shadow } from '../theme.js';
+import { API_BASE_URL } from '../config';
 
-const API_URL = 'http://localhost:8080/api/projects';
-const USERS_API_URL = 'http://localhost:8080/api/users';
+const API_URL = `${API_BASE_URL}/api/projects`;
 
 function ProjectsDashboard({ currentUser }) {
+  const navigate = useNavigate();
   const toast = useToast();
 
   const [projects, setProjects] = useState([]);
-  const [invitations, setInvitations] = useState([]);
-  const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [projectName, setProjectName] = useState('');
   const [projectDescription, setProjectDescription] = useState('');
-  const [selectedUserIds, setSelectedUserIds] = useState([]);
-  const [userSearch, setUserSearch] = useState('');
   const [creating, setCreating] = useState(false);
 
   const loadData = () => {
@@ -29,29 +27,32 @@ function ProjectsDashboard({ currentUser }) {
     setLoading(true);
     setError('');
 
-    Promise.all([
-      fetch(`${API_URL}/user/${currentUser.id}`).then((res) => res.json()),
-      fetch(`${API_URL}/invitations/user/${currentUser.id}`).then((res) => res.json()),
-      fetch(USERS_API_URL).then((res) => res.json()).catch(() => [])
-    ])
-      .then(([projectsData, invitationsData, usersData]) => {
-        setProjects(Array.isArray(projectsData) ? projectsData : []);
-        setInvitations(Array.isArray(invitationsData) ? invitationsData : []);
-        setAllUsers(Array.isArray(usersData) ? usersData.filter((user) => user.id !== currentUser.id) : []);
+    fetch(`${API_URL}/user/${currentUser.id}`)
+      .then((res) => {
+        if (!res.ok) throw new Error('Proiectele nu au putut fi încărcate.');
+        return res.json();
       })
-      .catch(() => setError('Proiectele nu au putut fi încărcate. Verifică conexiunea la server.'))
+      .then((projectsData) => setProjects(Array.isArray(projectsData) ? projectsData : []))
+      .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     const timer = window.setTimeout(loadData, 0);
-    return () => window.clearTimeout(timer);
+
+    // Reîncarcă lista dacă o invitație a fost acceptată din TopBar.
+    const handleProjectInviteAccepted = () => loadData();
+    window.addEventListener('project-invitation-accepted', handleProjectInviteAccepted);
+
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('project-invitation-accepted', handleProjectInviteAccepted);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
 
   const closeModal = () => {
     setIsModalOpen(false);
-    setUserSearch('');
   };
 
   const handleCreateProject = (event) => {
@@ -70,8 +71,7 @@ function ProjectsDashboard({ currentUser }) {
       body: JSON.stringify({
         name: projectName.trim(),
         description: projectDescription.trim(),
-        ownerId: currentUser.id,
-        invitedUserIds: selectedUserIds
+        ownerId: currentUser.id
       })
     })
       .then((res) => {
@@ -82,45 +82,12 @@ function ProjectsDashboard({ currentUser }) {
         setProjects((prev) => [newProject, ...prev]);
         setProjectName('');
         setProjectDescription('');
-        setSelectedUserIds([]);
         closeModal();
-        toast.success('Proiect creat. Invitațiile au fost trimise.');
+        toast.success('Proiect creat.');
       })
       .catch((err) => toast.error(err.message))
       .finally(() => setCreating(false));
   };
-
-  const handleAcceptInvitation = (invitationId) => {
-    fetch(`${API_URL}/invitations/${invitationId}/accept`, { method: 'POST' })
-      .then((res) => {
-        if (!res.ok) throw new Error('Invitația a expirat sau nu mai este validă.');
-        toast.success('Ai intrat în proiect.');
-        loadData();
-      })
-      .catch((err) => toast.error(err.message));
-  };
-
-  const handleDeclineInvitation = (invitationId) => {
-    fetch(`${API_URL}/invitations/${invitationId}/decline`, { method: 'POST' })
-      .then((res) => {
-        if (!res.ok) throw new Error('Invitația nu a putut fi refuzată.');
-        setInvitations((prev) => prev.filter((invitation) => invitation.id !== invitationId));
-        toast.success('Invitație refuzată.');
-      })
-      .catch((err) => toast.error(err.message));
-  };
-
-  const toggleUserSelection = (userId) => {
-    setSelectedUserIds((prev) =>
-      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
-    );
-  };
-
-  const visibleUsers = allUsers.filter((user) => {
-    const query = userSearch.trim().toLowerCase();
-    if (!query) return true;
-    return `${user.username || ''} ${user.email || ''}`.toLowerCase().includes(query);
-  });
 
   return (
     <div className="page-container">
@@ -144,61 +111,6 @@ function ProjectsDashboard({ currentUser }) {
         </div>
       )}
 
-      {invitations.length > 0 && (
-        <section className="alert alert--warning" style={{ display: 'block', marginBottom: '24px' }}>
-          <h2 style={{ margin: '0 0 12px', fontSize: '1rem', color: '#92400e' }}>
-            📬 Invitații în așteptare ({invitations.length})
-          </h2>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {invitations.map((invitation) => (
-              <div
-                key={invitation.id}
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '10px',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '12px 16px',
-                  backgroundColor: '#ffffff',
-                  border: '1px solid #fcd34d',
-                  borderRadius: '8px'
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 600, color: '#1e293b' }}>{invitation.project?.name}</div>
-                  <div style={{ fontSize: '13px', color: colors.textMuted }}>
-                    Invitat de{' '}
-                    <strong>
-                      {invitation.project?.owner?.username || invitation.project?.owner?.email || 'owner'}
-                    </strong>{' '}
-                    · {formatTimeLeft(invitation.expiresAt)}
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    type="button"
-                    className="btn btn--primary btn--sm"
-                    onClick={() => handleAcceptInvitation(invitation.id)}
-                  >
-                    Acceptă
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--secondary btn--sm"
-                    onClick={() => handleDeclineInvitation(invitation.id)}
-                  >
-                    Refuză
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
       {loading ? (
         <div className="empty-state">Se încarcă proiectele...</div>
       ) : projects.length === 0 ? (
@@ -208,7 +120,7 @@ function ProjectsDashboard({ currentUser }) {
             Niciun proiect deocamdată
           </h2>
           <p style={{ maxWidth: '420px', margin: '0 auto 20px' }}>
-            Nu ești implicat în niciun proiect. Creează unul nou pentru a începe colaborarea.
+            Nu ești implicat în niciun proiect momentan. Creează unul nou pentru a începe colaborarea.
           </p>
           <button type="button" className="btn btn--primary" onClick={() => setIsModalOpen(true)}>
             Creează primul proiect
@@ -222,9 +134,7 @@ function ProjectsDashboard({ currentUser }) {
             return (
               <article
                 key={project.id}
-                onClick={() =>
-                  toast.info('Pagina de detalii a proiectului nu este încă disponibilă.')
-                }
+                onClick={() => navigate(`/projects/${project.id}`)}
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
@@ -312,7 +222,7 @@ function ProjectsDashboard({ currentUser }) {
             />
           </div>
 
-          <div className="field">
+          <div className="field" style={{ marginBottom: 0 }}>
             <label className="label" htmlFor="project-description">Descriere</label>
             <textarea
               id="project-description"
@@ -322,64 +232,6 @@ function ProjectsDashboard({ currentUser }) {
               value={projectDescription}
               onChange={(e) => setProjectDescription(e.target.value)}
             />
-          </div>
-
-          <div className="field">
-            <label className="label" htmlFor="project-user-search">
-              Invită utilizatori (opțional, invitația expiră în 48h)
-            </label>
-
-            <input
-              id="project-user-search"
-              className="input"
-              type="search"
-              placeholder="Caută după nume sau email..."
-              value={userSearch}
-              onChange={(e) => setUserSearch(e.target.value)}
-              style={{ marginBottom: '8px' }}
-            />
-
-            <div
-              style={{
-                maxHeight: '180px',
-                overflowY: 'auto',
-                padding: '10px',
-                border: `1px solid ${colors.border}`,
-                borderRadius: '8px'
-              }}
-            >
-              {visibleUsers.length === 0 ? (
-                <p style={{ margin: 0, fontSize: '13px', color: colors.textSoft }}>
-                  {allUsers.length === 0 ? 'Nu există alți utilizatori disponibili.' : 'Niciun utilizator găsit.'}
-                </p>
-              ) : (
-                visibleUsers.map((user) => (
-                  <label
-                    key={user.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      padding: '6px 0',
-                      fontSize: '14px',
-                      color: '#334155',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedUserIds.includes(user.id)}
-                      onChange={() => toggleUserSelection(user.id)}
-                    />
-                    <span>{user.username || user.email}</span>
-                  </label>
-                ))
-              )}
-            </div>
-
-            {selectedUserIds.length > 0 && (
-              <p className="field-hint">{selectedUserIds.length} utilizator(i) selectat(i).</p>
-            )}
           </div>
         </form>
       </Modal>

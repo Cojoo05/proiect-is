@@ -3,8 +3,9 @@ import { useToast } from '../../context/ToastContext.jsx';
 import ConfirmDialog from '../../components/ConfirmDialog.jsx';
 import { formatShortDateTime } from '../../utils/format.js';
 import { colors } from '../../theme.js';
+import { API_BASE_URL } from '../../config';
 
-const API_URL = 'http://localhost:8080/api/notes';
+const API_URL = `${API_BASE_URL}/api/notes`;
 
 const isNotePinned = (note) => Boolean(note.isPinned ?? note.pinned);
 

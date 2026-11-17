@@ -1,23 +1,37 @@
 import { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 
 import { ToastProvider } from './context/ToastContext.jsx';
-import AppLayout from './components/AppLayout.jsx';
+import { isAdminUser } from './theme.js';
 
 import Login from './pages/Auth/Login.jsx';
 import Register from './pages/Auth/Register.jsx';
-import Calendar from './pages/Calendar.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import AdminPanel from './pages/AdminPanel.jsx';
 import TasksBoard from './pages/TasksBoard.jsx';
 import ForMeDashboard from './pages/ForMeApp/ForMeDashboard.jsx';
 import ProjectsDashboard from './pages/ProjectsDashboard.jsx';
+import ProjectDetail from './pages/ProjectDetail.jsx';
+import MessagesPage from './pages/MessagesPage.jsx';
 import NotesPage from './pages/ForMeApp/NotesPage.jsx';
+import RemindersPage from './pages/ForMeApp/RemindersPage.jsx';
 import MeetingRooms from './pages/ForMeApp/MeetingRooms.jsx';
 import AnnouncementsPage from './pages/AnnouncementsPage.jsx';
 import NotFound from './pages/NotFound.jsx';
+import Calendar from './pages/Calendar.jsx';
+import TopBar from './components/TopBar.jsx';
 
 import './App.css';
+
+// Layout that injects TopBar on every authenticated page
+function AuthLayout({ currentUser, setCurrentUser }) {
+  return (
+    <>
+      <TopBar currentUser={currentUser} setCurrentUser={setCurrentUser} />
+      <Outlet context={{ currentUser, setCurrentUser }} />
+    </>
+  );
+}
 
 function App() {
   const [currentUser, setCurrentUser] = useState(() => {
@@ -25,43 +39,44 @@ function App() {
     return savedUser ? JSON.parse(savedUser) : null;
   });
 
-  // Toate paginile autentificate primesc același layout (TopBar + logout).
-  const withLayout = (page) =>
-    currentUser ? (
-      <AppLayout currentUser={currentUser} setCurrentUser={setCurrentUser}>
-        {page}
-      </AppLayout>
-    ) : (
-      <Navigate to="/login" replace />
-    );
+  const isAdmin = isAdminUser(currentUser);
 
   return (
     <ToastProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Navigate to={currentUser ? '/dashboard' : '/login'} replace />} />
+          {/* Public routes — no TopBar */}
+          <Route path="/login" element={currentUser ? <Navigate to="/dashboard" /> : <Login setCurrentUser={setCurrentUser} />} />
+          <Route path="/register" element={<Register />} />
 
+          {/* Root redirect */}
+          <Route path="/" element={<Navigate to={currentUser ? '/dashboard' : '/login'} />} />
+
+          {/* Authenticated routes — TopBar injected via layout */}
           <Route
-            path="/login"
-            element={currentUser ? <Navigate to="/dashboard" replace /> : <Login setCurrentUser={setCurrentUser} />}
-          />
-          <Route
-            path="/register"
-            element={currentUser ? <Navigate to="/dashboard" replace /> : <Register />}
-          />
-
-          <Route path="/dashboard" element={withLayout(<Dashboard currentUser={currentUser} />)} />
-          <Route path="/calendar" element={withLayout(<Calendar currentUser={currentUser} />)} />
-          <Route path="/tasks" element={withLayout(<TasksBoard currentUser={currentUser} />)} />
-          <Route path="/projects" element={withLayout(<ProjectsDashboard currentUser={currentUser} />)} />
-          <Route path="/admin-panel" element={withLayout(<AdminPanel />)} />
-          <Route path="/announcements" element={withLayout(<AnnouncementsPage currentUser={currentUser} />)} />
-
-          <Route path="/for-me" element={withLayout(<ForMeDashboard />)} />
-          <Route path="/for-me/notes" element={withLayout(<NotesPage currentUser={currentUser} />)} />
-          <Route path="/meeting-rooms" element={withLayout(<MeetingRooms currentUser={currentUser} />)} />
-
-          <Route path="*" element={withLayout(<NotFound />)} />
+            element={
+              currentUser
+                ? <AuthLayout currentUser={currentUser} setCurrentUser={setCurrentUser} />
+                : <Navigate to="/login" />
+            }
+          >
+            <Route path="/dashboard" element={<Dashboard currentUser={currentUser} />} />
+            <Route
+              path="/admin-panel"
+              element={isAdmin ? <AdminPanel currentUser={currentUser} /> : <Navigate to="/dashboard" replace />}
+            />
+            <Route path="/tasks" element={<TasksBoard currentUser={currentUser} />} />
+            <Route path="/projects" element={<ProjectsDashboard currentUser={currentUser} />} />
+            <Route path="/projects/:projectId" element={<ProjectDetail currentUser={currentUser} />} />
+            <Route path="/messages" element={<MessagesPage currentUser={currentUser} />} />
+            <Route path="/calendar" element={<Calendar currentUser={currentUser} />} />
+            <Route path="/announcements" element={<AnnouncementsPage currentUser={currentUser} />} />
+            <Route path="/meeting-rooms" element={<MeetingRooms currentUser={currentUser} />} />
+            <Route path="/for-me" element={<ForMeDashboard />} />
+            <Route path="/for-me/notes" element={<NotesPage currentUser={currentUser} />} />
+            <Route path="/for-me/reminders" element={<RemindersPage currentUser={currentUser} />} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
         </Routes>
       </BrowserRouter>
     </ToastProvider>

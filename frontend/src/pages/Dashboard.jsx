@@ -47,6 +47,13 @@ function Dashboard({ currentUser }) {
       icon: '🏢',
       description: 'Delegare și rezervare săli pentru echipe și grupuri',
       path: '/meeting-rooms'
+    },
+    {
+      id: 'messages',
+      title: 'Mesagerie',
+      icon: '💬',
+      description: 'Conversații și grupuri de comunicare în timp real',
+      path: '/messages'
     }
   ];
 

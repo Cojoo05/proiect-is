@@ -6,9 +6,10 @@ import {
   taskStatusLabel
 } from '../utils/format.js';
 import { colors } from '../theme.js';
+import { API_BASE_URL } from '../config';
 
-const API_URL = 'http://localhost:8080/api/tasks';
-const USERS_API_URL = 'http://localhost:8080/api/users';
+const API_URL = `${API_BASE_URL}/api/tasks`;
+const USERS_API_URL = `${API_BASE_URL}/api/users`;
 
 const EMPTY_TASK = { title: '', description: '', assigneeId: '', dueDate: '' };
 

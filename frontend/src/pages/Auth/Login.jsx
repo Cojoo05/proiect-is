@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE_URL } from '../../config';
 
-const API_URL = 'http://localhost:8080/api/users';
+const API_URL = `${API_BASE_URL}/api/users`;
 
 function Login({ setCurrentUser }) {
   const navigate = useNavigate();
