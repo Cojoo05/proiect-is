@@ -1,13 +1,9 @@
 import { useNavigate } from 'react-router-dom';
+import { colors, isAdminUser, shadow } from '../theme.js';
 
-function Dashboard({ currentUser, setCurrentUser }) {
+function Dashboard({ currentUser }) {
   const navigate = useNavigate();
-
-  const handleLogout = () => {
-    localStorage.removeItem('currentUser');
-    if (setCurrentUser) setCurrentUser(null);
-    navigate('/login');
-  };
+  const isAdmin = isAdminUser(currentUser);
 
   const apps = [
     {
@@ -21,7 +17,7 @@ function Dashboard({ currentUser, setCurrentUser }) {
       id: 'calendar',
       title: 'Calendar',
       icon: '📅',
-      description: 'Schedule & Events',
+      description: 'Programează evenimente și sincronizează Google Calendar',
       path: '/calendar'
     },
     {
@@ -54,7 +50,7 @@ function Dashboard({ currentUser, setCurrentUser }) {
     }
   ];
 
-  if (currentUser?.role === 'ADMIN') {
+  if (isAdmin) {
     apps.push({
       id: 'admin-panel',
       title: 'Admin Panel',
@@ -65,151 +61,78 @@ function Dashboard({ currentUser, setCurrentUser }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', fontFamily: 'sans-serif' }}>
-      <header
+    <div className="page-container">
+      <div style={{ marginBottom: '28px' }}>
+        <h1 className="page-title">
+          Bun venit, {currentUser?.username || currentUser?.email || 'utilizator'} 👋
+        </h1>
+        <p className="page-subtitle">Alege un modul pentru a începe lucrul.</p>
+      </div>
+
+      <div
         style={{
-          backgroundColor: '#ffffff',
-          borderBottom: '1px solid #e2e8f0',
-          padding: '16px 32px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+          gap: '20px'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div
+        {apps.map((app) => (
+          <button
+            key={app.id}
+            type="button"
+            onClick={() => navigate(app.path)}
             style={{
-              width: '38px',
-              height: '38px',
-              borderRadius: '10px',
-              backgroundColor: '#5a3d5c',
-              color: '#ffffff',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 'bold',
-              fontSize: '18px'
+              textAlign: 'center',
+              padding: '24px',
+              backgroundColor: colors.surface,
+              border: `1px solid ${colors.border}`,
+              borderRadius: '12px',
+              boxShadow: shadow.card,
+              cursor: 'pointer',
+              transition: 'transform 0.2s, box-shadow 0.2s, border-color 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-4px)';
+              e.currentTarget.style.boxShadow = shadow.hover;
+              e.currentTarget.style.borderColor = '#d8b4e2';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = shadow.card;
+              e.currentTarget.style.borderColor = colors.border;
             }}
           >
-            P
-          </div>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.25rem', color: '#1e293b', fontWeight: '700' }}>Workspace</h1>
-            <span style={{ fontSize: '12px', color: '#64748b' }}>
-              Conectat ca <strong>{currentUser?.username || currentUser?.email || 'User'}</strong>
-            </span>
-          </div>
-        </div>
-
-        <button
-          onClick={handleLogout}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#f1f5f9',
-            color: '#475569',
-            border: '1px solid #cbd5e1',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: '500',
-            transition: 'background-color 0.15s'
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#e2e8f0')}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
-        >
-          Logout 🚪
-        </button>
-      </header>
-
-      <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '40px 24px' }}>
-        <div style={{ marginBottom: '32px' }}>
-          <h2 style={{ margin: '0 0 6px 0', fontSize: '1.75rem', color: '#0f172a', fontWeight: '700' }}>
-            Aplicații & Module
-          </h2>
-          <p style={{ margin: 0, color: '#64748b', fontSize: '15px' }}>
-            Selectează un modul pentru a începe lucrul.
-          </p>
-        </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: '24px'
-          }}
-        >
-          {apps.map((app) => (
-            <div
-              key={app.id}
-              onClick={() => navigate(app.path)}
+            <span
+              aria-hidden="true"
               style={{
-                backgroundColor: '#ffffff',
-                borderRadius: '12px',
-                padding: '24px',
                 display: 'flex',
-                flexDirection: 'column',
                 alignItems: 'center',
-                textAlign: 'center',
-                cursor: 'pointer',
-                border: '1px solid #e2e8f0',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05)',
-                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                userSelect: 'none'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)';
-                e.currentTarget.style.boxShadow = '0 12px 20px -3px rgba(90, 61, 92, 0.15)';
-                e.currentTarget.style.borderColor = '#d8b4e2';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05)';
-                e.currentTarget.style.borderColor = '#e2e8f0';
+                justifyContent: 'center',
+                width: '60px',
+                height: '60px',
+                marginBottom: '16px',
+                borderRadius: '14px',
+                backgroundColor: colors.accentSoft,
+                border: `1px solid ${colors.accentBorder}`,
+                fontSize: '28px'
               }}
             >
-              <div
-                style={{
-                  width: '60px',
-                  height: '60px',
-                  borderRadius: '14px',
-                  backgroundColor: '#f6eff7',
-                  color: '#5a3d5c',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '28px',
-                  marginBottom: '16px',
-                  border: '1px solid #ebd9eb'
-                }}
-              >
-                {app.icon}
-              </div>
+              {app.icon}
+            </span>
 
-              <h3
-                style={{
-                  margin: '0 0 6px 0',
-                  fontSize: '1.15rem',
-                  fontWeight: '600',
-                  color: '#1e293b'
-                }}
-              >
-                {app.title}
-              </h3>
+            <span style={{ marginBottom: '6px', fontSize: '1.1rem', fontWeight: 700, color: '#1e293b' }}>
+              {app.title}
+            </span>
 
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: '0.875rem',
-                  color: '#64748b',
-                  lineHeight: '1.4'
-                }}
-              >
-                {app.description}
-              </p>
-            </div>
-          ))}
-        </div>
-      </main>
+            <span style={{ fontSize: '0.875rem', color: colors.textMuted, lineHeight: 1.45 }}>
+              {app.description}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

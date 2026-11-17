@@ -1,168 +1,194 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useToast } from '../context/ToastContext.jsx';
+import Modal from '../components/Modal.jsx';
+import { formatDate, formatTimeLeft } from '../utils/format.js';
+import { colors, shadow } from '../theme.js';
+
+const API_URL = 'http://localhost:8080/api/projects';
+const USERS_API_URL = 'http://localhost:8080/api/users';
 
 function ProjectsDashboard({ currentUser }) {
-  const navigate = useNavigate();
+  const toast = useToast();
+
   const [projects, setProjects] = useState([]);
   const [invitations, setInvitations] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [projectName, setProjectName] = useState('');
   const [projectDescription, setProjectDescription] = useState('');
   const [selectedUserIds, setSelectedUserIds] = useState([]);
-
-  const API_URL = 'http://localhost:8080/api/projects';
-  const USERS_API_URL = 'http://localhost:8080/api/users';
+  const [userSearch, setUserSearch] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const loadData = () => {
     if (!currentUser?.id) return;
+
     setLoading(true);
+    setError('');
 
     Promise.all([
-      fetch(`${API_URL}/user/${currentUser.id}`).then((r) => r.json()),
-      fetch(`${API_URL}/invitations/user/${currentUser.id}`).then((r) => r.json()),
-      fetch(USERS_API_URL).then((r) => r.json()).catch(() => [])
+      fetch(`${API_URL}/user/${currentUser.id}`).then((res) => res.json()),
+      fetch(`${API_URL}/invitations/user/${currentUser.id}`).then((res) => res.json()),
+      fetch(USERS_API_URL).then((res) => res.json()).catch(() => [])
     ])
       .then(([projectsData, invitationsData, usersData]) => {
         setProjects(Array.isArray(projectsData) ? projectsData : []);
         setInvitations(Array.isArray(invitationsData) ? invitationsData : []);
-        setAllUsers(Array.isArray(usersData) ? usersData.filter((u) => u.id !== currentUser.id) : []);
-        setLoading(false);
+        setAllUsers(Array.isArray(usersData) ? usersData.filter((user) => user.id !== currentUser.id) : []);
       })
-      .catch((err) => {
-        console.error(err);
-        setLoading(false);
-      });
+      .catch(() => setError('Proiectele nu au putut fi încărcate. Verifică conexiunea la server.'))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    loadData();
+    const timer = window.setTimeout(loadData, 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
 
-  const handleCreateProject = (e) => {
-    e.preventDefault();
-    if (!projectName.trim() || !currentUser?.id) return;
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setUserSearch('');
+  };
 
-    const payload = {
-      name: projectName.trim(),
-      description: projectDescription.trim(),
-      ownerId: currentUser.id,
-      invitedUserIds: selectedUserIds
-    };
+  const handleCreateProject = (event) => {
+    event.preventDefault();
+
+    if (!projectName.trim() || !currentUser?.id) {
+      toast.error('Completează numele proiectului.');
+      return;
+    }
+
+    setCreating(true);
 
     fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        name: projectName.trim(),
+        description: projectDescription.trim(),
+        ownerId: currentUser.id,
+        invitedUserIds: selectedUserIds
+      })
     })
       .then((res) => {
-        if (!res.ok) throw new Error('Eroare la crearea proiectului');
+        if (!res.ok) throw new Error('Proiectul nu a putut fi creat.');
         return res.json();
       })
       .then((newProject) => {
-        setProjects([newProject, ...projects]);
-        setIsModalOpen(false);
+        setProjects((prev) => [newProject, ...prev]);
         setProjectName('');
         setProjectDescription('');
         setSelectedUserIds([]);
+        closeModal();
+        toast.success('Proiect creat. Invitațiile au fost trimise.');
       })
-      .catch((err) => alert(err.message));
+      .catch((err) => toast.error(err.message))
+      .finally(() => setCreating(false));
   };
 
   const handleAcceptInvitation = (invitationId) => {
     fetch(`${API_URL}/invitations/${invitationId}/accept`, { method: 'POST' })
       .then((res) => {
-        if (!res.ok) throw new Error('Invitația a expirat sau nu mai este validă');
+        if (!res.ok) throw new Error('Invitația a expirat sau nu mai este validă.');
+        toast.success('Ai intrat în proiect.');
         loadData();
       })
-      .catch((err) => alert(err.message));
+      .catch((err) => toast.error(err.message));
   };
 
   const handleDeclineInvitation = (invitationId) => {
     fetch(`${API_URL}/invitations/${invitationId}/decline`, { method: 'POST' })
       .then((res) => {
-        if (!res.ok) throw new Error('Eroare la refuzarea invitației');
-        setInvitations(invitations.filter((inv) => inv.id !== invitationId));
+        if (!res.ok) throw new Error('Invitația nu a putut fi refuzată.');
+        setInvitations((prev) => prev.filter((invitation) => invitation.id !== invitationId));
+        toast.success('Invitație refuzată.');
       })
-      .catch((err) => alert(err.message));
+      .catch((err) => toast.error(err.message));
   };
 
   const toggleUserSelection = (userId) => {
-    if (selectedUserIds.includes(userId)) {
-      setSelectedUserIds(selectedUserIds.filter((id) => id !== userId));
-    } else {
-      setSelectedUserIds([...selectedUserIds, userId]);
-    }
+    setSelectedUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
   };
 
-  const calculateHoursLeft = (expiresAt) => {
-    if (!expiresAt) return 0;
-    const diffMs = new Date(expiresAt) - new Date();
-    const hours = Math.floor(diffMs / (1000 * 60 * 60));
-    return Math.max(0, hours);
-  };
-
-  const formatDate = (isoString) => {
-    if (!isoString) return '-';
-    const date = new Date(isoString);
-    return date.toLocaleDateString('ro-RO', { day: '2-digit', month: 'short', year: 'numeric' });
-  };
+  const visibleUsers = allUsers.filter((user) => {
+    const query = userSearch.trim().toLowerCase();
+    if (!query) return true;
+    return `${user.username || ''} ${user.email || ''}`.toLowerCase().includes(query);
+  });
 
   return (
-    <div style={{ padding: '30px', fontFamily: 'sans-serif', maxWidth: '1100px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
-        <button
-          onClick={() => navigate('/dashboard')}
-          style={{ padding: '8px 16px', cursor: 'pointer', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '5px' }}
-        >
-          ⬅️ Back
-        </button>
-        <h1 style={{ margin: 0, color: '#1e293b', fontSize: '2rem' }}>📁 Projects</h1>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          style={{ padding: '10px 18px', backgroundColor: '#5a3d5c', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
-        >
-          + Create Project
+    <div className="page-container">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">📁 Projects</h1>
+          <p className="page-subtitle">Proiectele în care ești owner sau membru.</p>
+        </div>
+
+        <button type="button" className="btn btn--primary" onClick={() => setIsModalOpen(true)}>
+          + Proiect nou
         </button>
       </div>
 
+      {error && (
+        <div className="alert alert--error" role="alert">
+          <span>{error}</span>
+          <button type="button" className="btn btn--secondary btn--sm" onClick={loadData}>
+            Reîncearcă
+          </button>
+        </div>
+      )}
+
       {invitations.length > 0 && (
-        <div style={{ backgroundColor: '#fef3c7', border: '1px solid #fde68a', borderRadius: '10px', padding: '16px 20px', marginBottom: '30px' }}>
-          <h3 style={{ margin: '0 0 12px 0', color: '#92400e', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <section className="alert alert--warning" style={{ display: 'block', marginBottom: '24px' }}>
+          <h2 style={{ margin: '0 0 12px', fontSize: '1rem', color: '#92400e' }}>
             📬 Invitații în așteptare ({invitations.length})
-          </h3>
+          </h2>
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {invitations.map((inv) => (
+            {invitations.map((invitation) => (
               <div
-                key={inv.id}
+                key={invitation.id}
                 style={{
                   display: 'flex',
-                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '10px',
                   alignItems: 'center',
-                  backgroundColor: 'white',
+                  justifyContent: 'space-between',
                   padding: '12px 16px',
-                  borderRadius: '8px',
-                  border: '1px solid #fcd34d'
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #fcd34d',
+                  borderRadius: '8px'
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: '600', color: '#1e293b' }}>{inv.project?.name}</div>
-                  <div style={{ fontSize: '13px', color: '#64748b' }}>
-                    Invitat de <strong>{inv.project?.owner?.username || inv.project?.owner?.email || 'Owner'}</strong> · expiră în {calculateHoursLeft(inv.expiresAt)}h
+                  <div style={{ fontWeight: 600, color: '#1e293b' }}>{invitation.project?.name}</div>
+                  <div style={{ fontSize: '13px', color: colors.textMuted }}>
+                    Invitat de{' '}
+                    <strong>
+                      {invitation.project?.owner?.username || invitation.project?.owner?.email || 'owner'}
+                    </strong>{' '}
+                    · {formatTimeLeft(invitation.expiresAt)}
                   </div>
                 </div>
+
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button
-                    onClick={() => handleAcceptInvitation(inv.id)}
-                    style={{ padding: '6px 14px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+                    type="button"
+                    className="btn btn--primary btn--sm"
+                    onClick={() => handleAcceptInvitation(invitation.id)}
                   >
                     Acceptă
                   </button>
                   <button
-                    onClick={() => handleDeclineInvitation(inv.id)}
-                    style={{ padding: '6px 14px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+                    type="button"
+                    className="btn btn--secondary btn--sm"
+                    onClick={() => handleDeclineInvitation(invitation.id)}
                   >
                     Refuză
                   </button>
@@ -170,156 +196,193 @@ function ProjectsDashboard({ currentUser }) {
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '50px', color: '#64748b' }}>Se încarcă proiectele...</div>
+        <div className="empty-state">Se încarcă proiectele...</div>
       ) : projects.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 20px', backgroundColor: '#fafafa', borderRadius: '12px', border: '2px dashed #cbd5e1', marginTop: '10px' }}>
-          <div style={{ fontSize: '48px', marginBottom: '15px' }}>📂</div>
-          <h2 style={{ color: '#334155', marginBottom: '8px' }}>Empty, waiting for new projects</h2>
-          <p style={{ color: '#64748b', maxWidth: '420px', margin: '0 auto 25px auto', fontSize: '15px' }}>
-            Nu ești implicat în niciun proiect momentan. Creează unul nou pentru a începe colaborarea.
+        <div className="empty-state">
+          <div style={{ fontSize: '44px', marginBottom: '10px' }} aria-hidden="true">📂</div>
+          <h2 style={{ margin: '0 0 8px', fontSize: '1.2rem', color: '#334155' }}>
+            Niciun proiect deocamdată
+          </h2>
+          <p style={{ maxWidth: '420px', margin: '0 auto 20px' }}>
+            Nu ești implicat în niciun proiect. Creează unul nou pentru a începe colaborarea.
           </p>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            style={{ padding: '11px 22px', backgroundColor: '#5a3d5c', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
-          >
-            Create your first project
+          <button type="button" className="btn btn--primary" onClick={() => setIsModalOpen(true)}>
+            Creează primul proiect
           </button>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
-          {projects.map((proj) => {
-            const isOwner = proj.owner?.id === currentUser?.id;
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '18px' }}>
+          {projects.map((project) => {
+            const isOwner = project.owner?.id === currentUser?.id;
+
             return (
-              <div
-                key={proj.id}
-                onClick={() => navigate(`/projects/${proj.id}`)}
+              <article
+                key={project.id}
+                onClick={() =>
+                  toast.info('Pagina de detalii a proiectului nu este încă disponibilă.')
+                }
                 style={{
-                  backgroundColor: 'white',
-                  borderRadius: '10px',
-                  border: '1px solid #e2e8f0',
+                  display: 'flex',
+                  flexDirection: 'column',
                   padding: '20px',
+                  backgroundColor: colors.surface,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '12px',
+                  boxShadow: shadow.card,
                   cursor: 'pointer',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
                   transition: 'transform 0.15s, box-shadow 0.15s'
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.transform = 'translateY(-3px)';
-                  e.currentTarget.style.boxShadow = '0 6px 14px rgba(90, 61, 92, 0.1)';
-                  e.currentTarget.style.borderColor = '#d8b4e2';
+                  e.currentTarget.style.boxShadow = shadow.hover;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.03)';
-                  e.currentTarget.style.borderColor = '#e2e8f0';
+                  e.currentTarget.style.boxShadow = shadow.card;
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                  <h3 style={{ margin: 0, color: '#1e293b', fontSize: '1.2rem' }}>{proj.name}</h3>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    gap: '10px',
+                    marginBottom: '10px'
+                  }}
+                >
+                  <h2 style={{ margin: 0, fontSize: '1.1rem', color: '#1e293b' }}>{project.name}</h2>
                   <span
                     style={{
+                      padding: '3px 9px',
+                      borderRadius: '999px',
                       fontSize: '11px',
-                      fontWeight: 'bold',
-                      padding: '3px 8px',
-                      borderRadius: '12px',
-                      backgroundColor: isOwner ? '#f3e8ff' : '#f1f5f9',
-                      color: isOwner ? '#6b21a8' : '#475569'
+                      fontWeight: 700,
+                      backgroundColor: isOwner ? colors.accentSoft : '#f1f5f9',
+                      color: isOwner ? colors.accent : '#475569',
+                      border: `1px solid ${isOwner ? colors.accentBorder : colors.border}`
                     }}
                   >
                     {isOwner ? 'OWNER' : 'MEMBER'}
                   </span>
                 </div>
-                <p style={{ color: '#64748b', fontSize: '14px', minHeight: '40px', margin: '0 0 15px 0' }}>
-                  {proj.description || 'Fără descriere.'}
+
+                <p style={{ margin: '0 0 14px', fontSize: '14px', color: colors.textMuted, flex: 1 }}>
+                  {project.description || 'Fără descriere.'}
                 </p>
-                <div style={{ fontSize: '12px', color: '#94a3b8', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
-                  Creat: {formatDate(proj.createdAt)}
+
+                <div style={{ paddingTop: '10px', borderTop: `1px solid ${colors.border}`, fontSize: '12px', color: colors.textSoft }}>
+                  Creat: {formatDate(project.createdAt)}
                 </div>
-              </div>
+              </article>
             );
           })}
         </div>
       )}
 
-      {isModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '12px', width: '100%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h2 style={{ marginTop: 0, marginBottom: '20px', color: '#1e293b' }}>Proiect Nou</h2>
-            <form onSubmit={handleCreateProject}>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px', fontSize: '14px', color: '#334155' }}>
-                  Nume Proiect *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={projectName}
-                  onChange={(e) => setProjectName(e.target.value)}
-                  placeholder="ex: Redesign Platformă"
-                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px', fontSize: '14px', color: '#334155' }}>
-                  Descriere
-                </label>
-                <textarea
-                  value={projectDescription}
-                  onChange={(e) => setProjectDescription(e.target.value)}
-                  placeholder="Obiectivele proiectului..."
-                  rows="3"
-                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box', resize: 'vertical' }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', fontSize: '14px', color: '#334155' }}>
-                  Invită Utilizatori (opțional, invitația expiră în 48h)
-                </label>
-                <div style={{ maxHeight: '160px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px' }}>
-                  {allUsers.length === 0 ? (
-                    <div style={{ fontSize: '13px', color: '#94a3b8' }}>Nu există alți utilizatori disponibili.</div>
-                  ) : (
-                    allUsers.map((u) => (
-                      <label
-                        key={u.id}
-                        style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0', cursor: 'pointer', fontSize: '14px', color: '#334155' }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedUserIds.includes(u.id)}
-                          onChange={() => toggleUserSelection(u.id)}
-                        />
-                        <span>{u.username || u.email}</span>
-                      </label>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  style={{ padding: '9px 16px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
-                >
-                  Anulează
-                </button>
-                <button
-                  type="submit"
-                  style={{ padding: '9px 18px', backgroundColor: '#5a3d5c', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
-                >
-                  Creează Proiectul
-                </button>
-              </div>
-            </form>
+      <Modal
+        open={isModalOpen}
+        title="Proiect nou"
+        onClose={closeModal}
+        footer={
+          <>
+            <button type="button" className="btn btn--secondary" onClick={closeModal} disabled={creating}>
+              Anulează
+            </button>
+            <button type="submit" form="create-project-form" className="btn btn--primary" disabled={creating}>
+              {creating ? 'Se creează...' : 'Creează proiectul'}
+            </button>
+          </>
+        }
+      >
+        <form id="create-project-form" onSubmit={handleCreateProject}>
+          <div className="field">
+            <label className="label" htmlFor="project-name">Nume proiect *</label>
+            <input
+              id="project-name"
+              className="input"
+              type="text"
+              autoFocus
+              placeholder="ex: Redesign platformă"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+            />
           </div>
-        </div>
-      )}
+
+          <div className="field">
+            <label className="label" htmlFor="project-description">Descriere</label>
+            <textarea
+              id="project-description"
+              className="textarea"
+              rows={3}
+              placeholder="Obiectivele proiectului..."
+              value={projectDescription}
+              onChange={(e) => setProjectDescription(e.target.value)}
+            />
+          </div>
+
+          <div className="field">
+            <label className="label" htmlFor="project-user-search">
+              Invită utilizatori (opțional, invitația expiră în 48h)
+            </label>
+
+            <input
+              id="project-user-search"
+              className="input"
+              type="search"
+              placeholder="Caută după nume sau email..."
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              style={{ marginBottom: '8px' }}
+            />
+
+            <div
+              style={{
+                maxHeight: '180px',
+                overflowY: 'auto',
+                padding: '10px',
+                border: `1px solid ${colors.border}`,
+                borderRadius: '8px'
+              }}
+            >
+              {visibleUsers.length === 0 ? (
+                <p style={{ margin: 0, fontSize: '13px', color: colors.textSoft }}>
+                  {allUsers.length === 0 ? 'Nu există alți utilizatori disponibili.' : 'Niciun utilizator găsit.'}
+                </p>
+              ) : (
+                visibleUsers.map((user) => (
+                  <label
+                    key={user.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '6px 0',
+                      fontSize: '14px',
+                      color: '#334155',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedUserIds.includes(user.id)}
+                      onChange={() => toggleUserSelection(user.id)}
+                    />
+                    <span>{user.username || user.email}</span>
+                  </label>
+                ))
+              )}
+            </div>
+
+            {selectedUserIds.length > 0 && (
+              <p className="field-hint">{selectedUserIds.length} utilizator(i) selectat(i).</p>
+            )}
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

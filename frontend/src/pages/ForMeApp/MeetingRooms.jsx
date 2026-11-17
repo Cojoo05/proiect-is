@@ -1,13 +1,22 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useToast } from '../../context/ToastContext.jsx';
+import ConfirmDialog from '../../components/ConfirmDialog.jsx';
+import Modal from '../../components/Modal.jsx';
+import { formatShortDateTime } from '../../utils/format.js';
+import { colors } from '../../theme.js';
 
 const STORAGE_KEY = 'meetingRooms';
+const RESERVATIONS_KEY = 'meetingRoomReservations';
 
 const DEFAULT_ROOMS = [
   { id: 1, name: 'Sala Alpha', location: 'Etaj 1, Birou 101', capacity: 8, equipment: 'TV, Whiteboard' },
   { id: 2, name: 'Sala Beta', location: 'Etaj 2, Birou 204', capacity: 4, equipment: 'TV' },
   { id: 3, name: 'Sala Gamma', location: 'Etaj 3, Birou 310', capacity: 12, equipment: 'Projector, Video call, Whiteboard' }
 ];
+
+const EMPTY_ROOM = { name: '', location: '', capacity: '', equipment: '' };
+
+const DURATIONS = [30, 60, 90, 120];
 
 function loadRooms() {
   try {
@@ -19,20 +28,45 @@ function loadRooms() {
   return DEFAULT_ROOMS;
 }
 
-function MeetingRooms({ currentUser }) {
-  const navigate = useNavigate();
-  const [rooms, setRooms] = useState(loadRooms);
-  const [form, setForm] = useState({ name: '', location: '', capacity: '', equipment: '' });
-  const [showForm, setShowForm] = useState(false);
+function loadReservations() {
+  try {
+    const saved = localStorage.getItem(RESERVATIONS_KEY);
+    const parsed = saved ? JSON.parse(saved) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
-  const persist = (nextRooms) => {
+function MeetingRooms({ currentUser }) {
+  const toast = useToast();
+
+  const [rooms, setRooms] = useState(loadRooms);
+  const [reservations, setReservations] = useState(loadReservations);
+  const [form, setForm] = useState(EMPTY_ROOM);
+  const [showForm, setShowForm] = useState(false);
+  const [error, setError] = useState('');
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [reservingRoom, setReservingRoom] = useState(null);
+  const [reservation, setReservation] = useState({ startTime: '10:00', duration: 60 });
+
+  const persistRooms = (nextRooms) => {
     setRooms(nextRooms);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(nextRooms));
   };
 
-  const handleCreateRoom = (e) => {
-    e.preventDefault();
-    if (!form.name.trim()) return alert('Completează numele sălii!');
+  const persistReservations = (nextReservations) => {
+    setReservations(nextReservations);
+    localStorage.setItem(RESERVATIONS_KEY, JSON.stringify(nextReservations));
+  };
+
+  const handleCreateRoom = (event) => {
+    event.preventDefault();
+
+    if (!form.name.trim()) {
+      setError('Completează numele sălii.');
+      return;
+    }
 
     const newRoom = {
       id: Date.now(),
@@ -42,133 +76,295 @@ function MeetingRooms({ currentUser }) {
       equipment: form.equipment.trim()
     };
 
-    persist([...rooms, newRoom]);
-    setForm({ name: '', location: '', capacity: '', equipment: '' });
+    persistRooms([...rooms, newRoom]);
+    setForm(EMPTY_ROOM);
     setShowForm(false);
+    setError('');
+    toast.success(`Sala „${newRoom.name}" a fost adăugată.`);
   };
 
-  const handleDeleteRoom = (id) => {
-    if (!window.confirm('Sigur dorești să ștergi această sală?')) return;
-    persist(rooms.filter((room) => room.id !== id));
+  const confirmDeleteRoom = () => {
+    if (!pendingDelete) return;
+
+    persistRooms(rooms.filter((room) => room.id !== pendingDelete.id));
+    setPendingDelete(null);
+    toast.success('Sală ștearsă.');
   };
 
-  const handleReserve = (room) => {
-    const startTime = window.prompt(`Rezervare pentru "${room.name}" - ora începerii (ex: 14:00):`, '10:00');
-    if (!startTime) return;
+  const openReservation = (room) => {
+    setReservingRoom(room);
+    setReservation({ startTime: '10:00', duration: 60 });
+  };
 
-    const duration = window.prompt('Durata rezervării în minute:', '60');
-    if (!duration) return;
+  const handleReserve = (event) => {
+    event.preventDefault();
+    if (!reservingRoom) return;
 
-    const reservation = {
-      room: room.name,
-      startTime,
-      duration: Number(duration),
+    if (!reservation.startTime) {
+      toast.error('Alege ora de început.');
+      return;
+    }
+
+    const entry = {
+      id: Date.now(),
+      roomId: reservingRoom.id,
+      room: reservingRoom.name,
+      startTime: reservation.startTime,
+      duration: Number(reservation.duration),
       reservedBy: currentUser?.username || 'necunoscut',
       createdAt: new Date().toISOString()
     };
 
-    const saved = JSON.parse(localStorage.getItem('meetingRoomReservations') || '[]');
-    localStorage.setItem('meetingRoomReservations', JSON.stringify([...saved, reservation]));
-    alert(`Sala "${room.name}" a fost rezervată de ${reservation.reservedBy} la ora ${startTime} (${duration} min).`);
+    persistReservations([...reservations, entry]);
+    setReservingRoom(null);
+    toast.success(
+      `Sala „${entry.room}" rezervată la ${entry.startTime} pentru ${entry.duration} min.`
+    );
   };
 
   return (
-    <div style={{ padding: '30px', fontFamily: 'sans-serif', maxWidth: '1100px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
+    <div className="page-container">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">🏢 Săli de ședință</h1>
+          <p className="page-subtitle">Adaugă săli și rezervă-le pentru întâlniri.</p>
+        </div>
+
         <button
-          onClick={() => navigate('/dashboard')}
-          style={{ padding: '8px 15px', cursor: 'pointer', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '5px' }}
+          type="button"
+          className={`btn ${showForm ? 'btn--secondary' : 'btn--primary'}`}
+          onClick={() => {
+            setShowForm((prev) => !prev);
+            setError('');
+          }}
         >
-          ⬅️ Back to Dashboard
+          {showForm ? 'Anulează' : '+ Sală nouă'}
         </button>
-        <h1 style={{ margin: 0, color: '#333', fontSize: '2rem' }}>🏢 Meeting Rooms</h1>
-        <div style={{ width: '100px' }}></div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#f8f9fa', padding: '12px 20px', borderRadius: '8px 8px 0 0', border: '1px solid #ddd', borderBottom: 'none' }}>
-        <button
-          onClick={() => setShowForm((prev) => !prev)}
-          style={{ backgroundColor: '#5a3d5c', color: 'white', border: 'none', padding: '8px 18px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
-        >
-          {showForm ? 'CANCEL' : 'NEW ROOM'}
-        </button>
-      </div>
+      {error && (
+        <div className="alert alert--error" role="alert">
+          <span>{error}</span>
+          <button
+            type="button"
+            className="toast-close"
+            onClick={() => setError('')}
+            aria-label="Închide mesajul de eroare"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {showForm && (
-        <form
-          onSubmit={handleCreateRoom}
-          style={{ backgroundColor: 'white', padding: '20px', border: '1px solid #ddd', borderTop: 'none', display: 'flex', gap: '10px', flexWrap: 'wrap' }}
-        >
-          <input
-            type="text"
-            placeholder="Nume sală"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            style={{ padding: '10px', flex: '1', minWidth: '160px' }}
-          />
-          <input
-            type="text"
-            placeholder="Locație"
-            value={form.location}
-            onChange={(e) => setForm({ ...form, location: e.target.value })}
-            style={{ padding: '10px', flex: '1', minWidth: '160px' }}
-          />
-          <input
-            type="number"
-            min="0"
-            placeholder="Capacitate"
-            value={form.capacity}
-            onChange={(e) => setForm({ ...form, capacity: e.target.value })}
-            style={{ padding: '10px', width: '120px' }}
-          />
-          <input
-            type="text"
-            placeholder="Dotări (TV, projector...)"
-            value={form.equipment}
-            onChange={(e) => setForm({ ...form, equipment: e.target.value })}
-            style={{ padding: '10px', flex: '1', minWidth: '160px' }}
-          />
-          <button
-            type="submit"
-            style={{ padding: '10px 20px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
-          >
-            Add Room
+        <form onSubmit={handleCreateRoom} className="card" style={{ marginBottom: '24px' }} noValidate>
+          <h2 style={{ margin: '0 0 16px', fontSize: '1.05rem', color: '#1e293b' }}>Sală nouă</h2>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label className="label" htmlFor="room-name">Nume sală *</label>
+              <input
+                id="room-name"
+                className="input"
+                type="text"
+                placeholder="ex: Sala Delta"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                required
+              />
+            </div>
+
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label className="label" htmlFor="room-location">Locație</label>
+              <input
+                id="room-location"
+                className="input"
+                type="text"
+                placeholder="ex: Etaj 2, Birou 204"
+                value={form.location}
+                onChange={(e) => setForm({ ...form, location: e.target.value })}
+              />
+            </div>
+
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label className="label" htmlFor="room-capacity">Capacitate</label>
+              <input
+                id="room-capacity"
+                className="input"
+                type="number"
+                min="0"
+                placeholder="ex: 8"
+                value={form.capacity}
+                onChange={(e) => setForm({ ...form, capacity: e.target.value })}
+              />
+            </div>
+
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label className="label" htmlFor="room-equipment">Dotări</label>
+              <input
+                id="room-equipment"
+                className="input"
+                type="text"
+                placeholder="TV, projector..."
+                value={form.equipment}
+                onChange={(e) => setForm({ ...form, equipment: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <button type="submit" className="btn btn--primary" style={{ marginTop: '18px' }}>
+            Adaugă sala
           </button>
         </form>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '18px', marginTop: showForm ? '18px' : '0' }}>
-        {rooms.length === 0 ? (
-          <p style={{ color: '#888' }}>Nu există nicio sală. Apasă pe <strong>NEW ROOM</strong> pentru a adăuga una.</p>
-        ) : (
-          rooms.map((room) => (
-            <div
-              key={room.id}
-              style={{ backgroundColor: 'white', border: '1px solid #ddd', borderLeft: '4px solid #5a3d5c', borderRadius: '8px', padding: '18px', boxShadow: '0 2px 6px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column' }}
-            >
-              <h3 style={{ margin: '0 0 8px 0', color: '#333' }}>{room.name}</h3>
-              <p style={{ margin: '0 0 4px 0', fontSize: '13px', color: '#666' }}>📍 {room.location || '-'}</p>
-              <p style={{ margin: '0 0 4px 0', fontSize: '13px', color: '#666' }}>👥 Capacitate: {room.capacity || '-'}</p>
-              <p style={{ margin: '0 0 14px 0', fontSize: '13px', color: '#666' }}>🔧 {room.equipment || '-'}</p>
+      {rooms.length === 0 ? (
+        <div className="empty-state">
+          <div style={{ fontSize: '40px', marginBottom: '10px' }} aria-hidden="true">🏢</div>
+          Nu există nicio sală. Apasă pe <strong>+ Sală nouă</strong> pentru a adăuga una.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '18px' }}>
+          {rooms.map((room) => {
+            const roomReservations = reservations.filter((item) => item.roomId === room.id);
 
-              <div style={{ marginTop: 'auto', display: 'flex', gap: '8px' }}>
-                <button
-                  onClick={() => handleReserve(room)}
-                  style={{ flex: 1, padding: '8px 12px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                >
-                  Rezervă
-                </button>
-                <button
-                  onClick={() => handleDeleteRoom(room.id)}
-                  style={{ padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                >
-                  🗑️
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+            return (
+              <article
+                key={room.id}
+                className="card"
+                style={{ display: 'flex', flexDirection: 'column', borderLeft: `4px solid ${colors.accent}` }}
+              >
+                <h2 style={{ margin: '0 0 8px', fontSize: '1.1rem', color: '#1e293b' }}>{room.name}</h2>
+                <p style={{ margin: '0 0 4px', fontSize: '13px', color: colors.textMuted }}>
+                  📍 {room.location || '—'}
+                </p>
+                <p style={{ margin: '0 0 4px', fontSize: '13px', color: colors.textMuted }}>
+                  👥 Capacitate: {room.capacity || '—'}
+                </p>
+                <p style={{ margin: '0 0 14px', fontSize: '13px', color: colors.textMuted }}>
+                  🔧 {room.equipment || '—'}
+                </p>
+
+                {roomReservations.length > 0 && (
+                  <ul style={{ margin: '0 0 14px', paddingLeft: '18px', fontSize: '12px', color: colors.textMuted }}>
+                    {roomReservations.slice(-2).map((item) => (
+                      <li key={item.id}>
+                        {item.startTime} · {item.duration} min · {item.reservedBy}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <div style={{ marginTop: 'auto', display: 'flex', gap: '8px' }}>
+                  <button type="button" className="btn btn--primary btn--sm" onClick={() => openReservation(room)} style={{ flex: 1 }}>
+                    Rezervă
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--danger btn--sm"
+                    onClick={() => setPendingDelete(room)}
+                    aria-label={`Șterge sala ${room.name}`}
+                  >
+                    🗑️
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {reservations.length > 0 && (
+        <section style={{ marginTop: '32px' }}>
+          <h2 style={{ margin: '0 0 12px', fontSize: '1.05rem', color: '#1e293b' }}>
+            Rezervările mele ({reservations.length})
+          </h2>
+
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Sală</th>
+                  <th>Ora</th>
+                  <th>Durată</th>
+                  <th>Rezervată de</th>
+                  <th>Când</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...reservations]
+                  .reverse()
+                  .slice(0, 10)
+                  .map((item) => (
+                    <tr key={item.id}>
+                      <td style={{ fontWeight: 600, color: '#1e293b' }}>{item.room}</td>
+                      <td>{item.startTime}</td>
+                      <td>{item.duration} min</td>
+                      <td>{item.reservedBy}</td>
+                      <td style={{ color: colors.textMuted }}>{formatShortDateTime(item.createdAt)}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      <Modal
+        open={Boolean(reservingRoom)}
+        title={reservingRoom ? `Rezervă „${reservingRoom.name}"` : 'Rezervă sală'}
+        onClose={() => setReservingRoom(null)}
+        size="sm"
+        footer={
+          <>
+            <button type="button" className="btn btn--secondary" onClick={() => setReservingRoom(null)}>
+              Anulează
+            </button>
+            <button type="submit" form="reserve-room-form" className="btn btn--primary">
+              Rezervă
+            </button>
+          </>
+        }
+      >
+        <form id="reserve-room-form" onSubmit={handleReserve}>
+          <div className="field">
+            <label className="label" htmlFor="reservation-start">Ora începerii</label>
+            <input
+              id="reservation-start"
+              className="input"
+              type="time"
+              value={reservation.startTime}
+              onChange={(e) => setReservation({ ...reservation, startTime: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label className="label" htmlFor="reservation-duration">Durată</label>
+            <select
+              id="reservation-duration"
+              className="select"
+              value={reservation.duration}
+              onChange={(e) => setReservation({ ...reservation, duration: Number(e.target.value) })}
+            >
+              {DURATIONS.map((duration) => (
+                <option key={duration} value={duration}>
+                  {duration} minute
+                </option>
+              ))}
+            </select>
+          </div>
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Ștergi sala?"
+        message={pendingDelete ? `„${pendingDelete.name}" va fi ștearsă din listă.` : ''}
+        confirmLabel="Șterge sala"
+        onConfirm={confirmDeleteRoom}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

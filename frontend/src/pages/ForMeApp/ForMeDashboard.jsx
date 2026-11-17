@@ -16,16 +16,14 @@ function ForMeDashboard() {
   };
 
   return (
-    <div style={{ padding: '40px', fontFamily: 'sans-serif', textAlign: 'center' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '1000px', margin: '0 auto', marginBottom: '20px' }}>
-        <button onClick={() => navigate('/dashboard')} style={{ padding: '8px 15px', cursor: 'pointer', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '5px' }}>
-          ⬅️ Back to Dashboard
-        </button>
-        <h1 style={{ fontSize: '2.5rem', margin: 0, color: '#333' }}>🌙 For Me</h1>
-        <div style={{ width: '100px' }}></div>
+    <div className="page-container" style={{ textAlign: 'center' }}>
+      <div style={{ marginBottom: '20px' }}>
+        <h1 className="page-title">🌙 For Me</h1>
       </div>
-      
-      <p style={{ color: '#666', marginBottom: '40px' }}>Spațiul tău personal de organizare și reflecție:</p>
+
+      <p className="page-subtitle" style={{ marginBottom: '40px' }}>
+        Spațiul tău personal de organizare și reflecție.
+      </p>
       
       <div style={{ display: 'flex', justifyContent: 'center', gap: '25px', flexWrap: 'wrap', maxWidth: '1100px', margin: '0 auto' }}>
         

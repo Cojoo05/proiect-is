@@ -1,49 +1,181 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+
+const API_URL = 'http://localhost:8080/api/users';
+
+const EMPTY_FORM = { username: '', email: '', password: '', confirmPassword: '' };
 
 function Register() {
-  const [registerData, setRegisterData] = useState({ username: '', email: '', password: '' });
-  const API_URL = 'http://localhost:8080/api/users';
+  const navigate = useNavigate();
+
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const validate = () => {
+    if (!form.username.trim()) return 'Completează numele de utilizator.';
+    if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) return 'Introdu o adresă de email validă.';
+    if (form.password.length < 8) return 'Parola trebuie să aibă cel puțin 8 caractere.';
+    if (form.password !== form.confirmPassword) return 'Parolele nu se potrivesc.';
+    return '';
+  };
 
   const handleRegister = (e) => {
     e.preventDefault();
-    if (registerData.username.trim() === '' || registerData.email.trim() === '' || registerData.password.length < 3) {
-      alert("Please fill all fields correctly. Password must be at least 3 characters.");
+
+    const validationError = validate();
+    if (validationError) {
+      setError(validationError);
       return;
     }
+
+    setError('');
+    setLoading(true);
 
     fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...registerData, role: 'USER' })
+      body: JSON.stringify({
+        username: form.username.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        role: 'USER'
+      })
     })
-    .then(res => {
-      if (res.ok) {
-        alert("Account created successfully! You can now login.");
-        setCurrentView('login');
-      } else {
-        alert("Error creating account.");
-      }
-    })
-    .catch(() => alert("Server error!"));
+      .then(async (res) => {
+        if (!res.ok) {
+          throw new Error('Contul nu a putut fi creat. Poate numele de utilizator sau emailul există deja.');
+        }
+        navigate('/login');
+      })
+      .catch((err) => {
+        setError(
+          err instanceof TypeError
+            ? 'Nu pot contacta serverul. Verifică dacă backend-ul rulează pe portul 8080.'
+            : err.message
+        );
+      })
+      .finally(() => setLoading(false));
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#f4f6f8' }}>
-      <div style={{ backgroundColor: 'white', padding: '40px', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', width: '100%', maxWidth: '350px', textAlign: 'center' }}>
-        <div style={{ fontSize: '40px', marginBottom: '10px' }}>📝</div>
-        <h2>Create Account</h2>
-        <p style={{ color: '#777', fontSize: '14px', marginBottom: '30px' }}>Join us today</p>
-        
-        <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          <input type="text" placeholder="Username" value={registerData.username} onChange={(e) => setRegisterData({...registerData, username: e.target.value})} required style={{ padding: '12px', borderRadius: '5px', border: '1px solid #ccc' }} />
-          <input type="email" placeholder="Email" value={registerData.email} onChange={(e) => setRegisterData({...registerData, email: e.target.value})} required style={{ padding: '12px', borderRadius: '5px', border: '1px solid #ccc' }} />
-          <input type="password" placeholder="Password" value={registerData.password} onChange={(e) => setRegisterData({...registerData, password: e.target.value})} required style={{ padding: '12px', borderRadius: '5px', border: '1px solid #ccc' }} />
-          <button type="submit" style={{ padding: '12px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>Sign Up</button>
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        padding: '24px',
+        backgroundColor: '#f8fafc'
+      }}
+    >
+      <div
+        style={{
+          backgroundColor: '#ffffff',
+          padding: '36px 32px',
+          borderRadius: '14px',
+          boxShadow: '0 10px 30px -12px rgba(15, 23, 42, 0.25)',
+          width: '100%',
+          maxWidth: '380px'
+        }}
+      >
+        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+          <div style={{ fontSize: '40px', marginBottom: '8px' }} aria-hidden="true">📝</div>
+          <h1 style={{ margin: '0 0 6px', fontSize: '1.5rem', color: '#0f172a' }}>Creează cont</h1>
+          <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
+            Ai nevoie doar de un nume, un email și o parolă.
+          </p>
+        </div>
+
+        {error && (
+          <div className="alert alert--error" role="alert" style={{ marginBottom: '16px' }}>
+            <span>{error}</span>
+            <button
+              type="button"
+              className="toast-close"
+              onClick={() => setError('')}
+              aria-label="Închide mesajul de eroare"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        <form onSubmit={handleRegister} noValidate>
+          <div className="field">
+            <label className="label" htmlFor="reg-username">Nume de utilizator</label>
+            <input
+              id="reg-username"
+              className="input"
+              type="text"
+              autoFocus
+              autoComplete="username"
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="field">
+            <label className="label" htmlFor="reg-email">Email</label>
+            <input
+              id="reg-email"
+              className="input"
+              type="email"
+              autoComplete="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="field">
+            <label className="label" htmlFor="reg-password">Parolă</label>
+            <input
+              id="reg-password"
+              className="input"
+              type="password"
+              autoComplete="new-password"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              aria-describedby="reg-password-hint"
+              required
+            />
+            <p className="field-hint" id="reg-password-hint">Minim 8 caractere.</p>
+          </div>
+
+          <div className="field">
+            <label className="label" htmlFor="reg-confirm">Confirmă parola</label>
+            <input
+              id="reg-confirm"
+              className="input"
+              type="password"
+              autoComplete="new-password"
+              value={form.confirmPassword}
+              onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="btn btn--primary"
+            disabled={loading}
+            style={{ width: '100%', padding: '11px 16px' }}
+          >
+            {loading ? 'Se creează contul...' : 'Creează cont'}
+          </button>
         </form>
 
-        <div style={{ marginTop: '20px', fontSize: '14px', color: '#555' }}>
-          Already have an account?{' '}
-          <button onClick={() => setCurrentView('login')} style={{ background: 'none', border: 'none', color: '#007bff', cursor: 'pointer', fontWeight: 'bold', padding: 0 }}>Login</button>
+        <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '14px', color: '#475569' }}>
+          Ai deja cont?{' '}
+          <button
+            type="button"
+            onClick={() => navigate('/login')}
+            style={{ background: 'none', border: 'none', padding: 0, color: '#5a3d5c', fontWeight: 700, cursor: 'pointer' }}
+          >
+            Autentifică-te
+          </button>
         </div>
       </div>
     </div>

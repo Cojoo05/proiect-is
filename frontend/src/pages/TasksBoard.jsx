@@ -1,101 +1,362 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { useToast } from '../context/ToastContext.jsx';
+import {
+  TASK_STATUSES,
+  formatDate,
+  taskStatusLabel
+} from '../utils/format.js';
+import { colors } from '../theme.js';
+
+const API_URL = 'http://localhost:8080/api/tasks';
+const USERS_API_URL = 'http://localhost:8080/api/users';
+
+const EMPTY_TASK = { title: '', description: '', assigneeId: '', dueDate: '' };
 
 function TasksBoard({ currentUser }) {
-  const navigate = useNavigate();
-  const [viewMode, setViewMode] = useState('myTasks'); 
+  const toast = useToast();
+
+  const [viewMode, setViewMode] = useState('myTasks');
   const [tasks, setTasks] = useState([]);
   const [users, setUsers] = useState([]);
-  const [newTask, setNewTask] = useState({ title: '', description: '', assigneeUsername: '' });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [newTask, setNewTask] = useState(EMPTY_TASK);
+  const [creating, setCreating] = useState(false);
 
-  const API_URL = 'http://localhost:8080/api/tasks';
-  const USERS_API_URL = 'http://localhost:8080/api/users';
-  const columns = ['PRIMIT', 'IN_LUCRU', 'TERMINAT', 'ANULAT'];
+  const loadTasks = useCallback(() => {
+    if (!currentUser?.id) return;
 
-  const fetchTasks = () => {
-    if (!currentUser) return;
-    const endpoint = viewMode === 'myTasks' ? `${API_URL}/my-tasks/${currentUser.id}` : `${API_URL}/given-tasks/${currentUser.id}`;
-    fetch(endpoint).then(res => res.json()).then(data => setTasks(Array.isArray(data) ? data : [])).catch(err => console.error(err));
+    const endpoint =
+      viewMode === 'myTasks'
+        ? `${API_URL}/my-tasks/${currentUser.id}`
+        : `${API_URL}/given-tasks/${currentUser.id}`;
+
+    setLoading(true);
+    setError('');
+
+    fetch(endpoint)
+      .then((res) => {
+        if (!res.ok) throw new Error('Taskurile nu au putut fi încărcate.');
+        return res.json();
+      })
+      .then((data) => setTasks(Array.isArray(data) ? data : []))
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [currentUser, viewMode]);
+
+  useEffect(() => {
+    fetch(USERS_API_URL)
+      .then((res) => res.json())
+      .then((data) => setUsers(Array.isArray(data) ? data : []))
+      .catch(() => setUsers([]));
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(loadTasks, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadTasks]);
+
+  const handleDragStart = (event, taskId) => {
+    event.dataTransfer.setData('text/plain', String(taskId));
   };
 
-  const fetchUsers = () => {
-    fetch(USERS_API_URL).then(res => res.json()).then(data => setUsers(Array.isArray(data) ? data : [])).catch(err => console.error(err));
+  const handleDragOver = (event) => event.preventDefault();
+
+  const changeStatus = (taskId, status) => {
+    const current = tasks.find((task) => task.id === taskId);
+    const previousStatus = current?.status;
+    if (previousStatus === status) return;
+
+    setTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, status } : task)));
+
+    fetch(`${API_URL}/${taskId}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error('Statusul nu a putut fi actualizat.');
+        toast.success(`Task mutat în „${taskStatusLabel(status)}".`);
+      })
+      .catch((err) => {
+        setTasks((prev) =>
+          prev.map((task) => (task.id === taskId ? { ...task, status: previousStatus } : task))
+        );
+        toast.error(err.message);
+      });
   };
 
-  useEffect(() => { fetchUsers(); }, []);
-  useEffect(() => { if (currentUser) fetchTasks(); }, [viewMode, currentUser]);
-
-  const handleDragStart = (e, taskId) => { e.dataTransfer.setData('taskId', taskId); };
-  const handleDragOver = (e) => { e.preventDefault(); };
-
-  const handleDrop = (e, newStatus) => {
-    const taskId = e.dataTransfer.getData('taskId');
-    setTasks(prev => prev.map(t => t.id === parseInt(taskId) ? { ...t, status: newStatus } : t));
-    fetch(`${API_URL}/${taskId}/status`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) })
-      .catch(err => { console.error(err); fetchTasks(); });
+  const handleDrop = (event, status) => {
+    event.preventDefault();
+    const taskId = Number(event.dataTransfer.getData('text/plain'));
+    if (taskId) changeStatus(taskId, status);
   };
 
-  const handleCreateTask = (e) => {
-    e.preventDefault();
-    if (!currentUser) return window.location.reload();
-    if (!newTask.title || !newTask.assigneeUsername) return alert("Completează titlul și alege un utilizator!");
+  const handleCreateTask = (event) => {
+    event.preventDefault();
 
-    const targetUser = users.find(u => u.username.toLowerCase().trim() === newTask.assigneeUsername.toLowerCase().trim());
-    if (!targetUser) return alert(`Utilizatorul "${newTask.assigneeUsername}" nu există în baza de date!`);
+    if (!currentUser?.id) {
+      toast.error('Trebuie să fii autentificat pentru a crea taskuri.');
+      return;
+    }
+    if (!newTask.title.trim() || !newTask.assigneeId) {
+      toast.error('Completează titlul și alege un responsabil.');
+      return;
+    }
 
-    const taskPayload = { title: newTask.title, description: newTask.description, creator: { id: currentUser.id }, assignee: { id: targetUser.id } };
+    setCreating(true);
 
-    fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(taskPayload) })
-    .then(res => {
-      if (res.ok) { setNewTask({ title: '', description: '', assigneeUsername: '' }); fetchTasks(); } 
-      else { alert("Eroare la crearea task-ului."); }
-    }).catch(err => console.error(err));
+    const payload = {
+      title: newTask.title.trim(),
+      description: newTask.description.trim(),
+      creator: { id: currentUser.id },
+      assignee: { id: Number(newTask.assigneeId) },
+      dueLine: newTask.dueDate ? `${newTask.dueDate}T23:59:00` : null
+    };
+
+    fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error('Taskul nu a putut fi creat.');
+        return res.json();
+      })
+      .then(() => {
+        setNewTask(EMPTY_TASK);
+        toast.success('Task creat cu succes.');
+        loadTasks();
+      })
+      .catch((err) => toast.error(err.message))
+      .finally(() => setCreating(false));
   };
+
+  const isOverdue = (task) =>
+    task.dueLine && task.status !== 'TERMINAT' && task.status !== 'ANULAT'
+      ? // ora curentă e citită intenționat la fiecare randare
+        // eslint-disable-next-line react-hooks/purity
+        new Date(task.dueLine).getTime() < Date.now()
+      : false;
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '1200px', margin: '0 auto' }}>
-      <button onClick={() => navigate('/dashboard')} style={{ padding: '8px 15px', marginBottom: '20px', cursor: 'pointer', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '5px' }}>
-        ⬅️ Back to Dashboard
-      </button>
+    <div className="page-container">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">✅ Tasks</h1>
+          <p className="page-subtitle">Taskurile primite și cele date colegilor, organizate pe status.</p>
+        </div>
 
-      <h1 style={{ textAlign: 'center', color: '#333' }}>Task Management</h1>
-
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '30px' }}>
-        <button onClick={() => setViewMode('myTasks')} style={{ padding: '10px 20px', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', backgroundColor: viewMode === 'myTasks' ? '#007bff' : '#e9ecef', color: viewMode === 'myTasks' ? 'white' : '#333' }}>My Tasks</button>
-        <button onClick={() => setViewMode('giveTasks')} style={{ padding: '10px 20px', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', backgroundColor: viewMode === 'giveTasks' ? '#28a745' : '#e9ecef', color: viewMode === 'giveTasks' ? 'white' : '#333' }}>Give Tasks</button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            type="button"
+            className={`btn ${viewMode === 'myTasks' ? 'btn--primary' : 'btn--secondary'}`}
+            onClick={() => setViewMode('myTasks')}
+          >
+            Primite
+          </button>
+          <button
+            type="button"
+            className={`btn ${viewMode === 'giveTasks' ? 'btn--primary' : 'btn--secondary'}`}
+            onClick={() => setViewMode('giveTasks')}
+          >
+            Date de mine
+          </button>
+        </div>
       </div>
 
-      {viewMode === 'giveTasks' && (
-        <div style={{ backgroundColor: '#f8f9fa', padding: '20px', borderRadius: '8px', marginBottom: '30px', border: '1px solid #ddd' }}>
-          <h3>Assign a new task</h3>
-          <form onSubmit={handleCreateTask} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <input type="text" placeholder="Task Title" value={newTask.title} onChange={e => setNewTask({...newTask, title: e.target.value})} style={{ padding: '10px', flex: '1', minWidth: '200px' }} />
-            <input type="text" placeholder="Description" value={newTask.description} onChange={e => setNewTask({...newTask, description: e.target.value})} style={{ padding: '10px', flex: '2', minWidth: '200px' }} />
-            <input type="text" list="users-list" placeholder="Assignee Username" value={newTask.assigneeUsername} onChange={e => setNewTask({...newTask, assigneeUsername: e.target.value})} style={{ padding: '10px', flex: '1', minWidth: '150px' }} />
-            <datalist id="users-list">{users.map(u => (<option key={u.id} value={u.username} />))}</datalist>
-            <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>Create Task</button>
-          </form>
+      {error && (
+        <div className="alert alert--error" role="alert">
+          <span>{error}</span>
+          <button type="button" className="btn btn--secondary btn--sm" onClick={loadTasks}>
+            Reîncearcă
+          </button>
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '20px', overflowX: 'auto', paddingBottom: '20px' }}>
-        {columns.map(status => (
-          <div key={status} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, status)} style={{ flex: 1, minWidth: '250px', backgroundColor: '#f4f6f8', borderRadius: '8px', padding: '15px', border: '1px solid #e0e0e0', display: 'flex', flexDirection: 'column' }}>
-            <h3 style={{ textAlign: 'center', marginBottom: '15px', color: '#555', borderBottom: '2px solid #ddd', paddingBottom: '10px' }}>{status.replace('_', ' ')}</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
-              {tasks.filter(t => t.status === status).map(task => (
-                <div key={task.id} draggable onDragStart={(e) => handleDragStart(e, task.id)} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '6px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', cursor: 'grab', borderLeft: '4px solid #007bff' }}>
-                  <h4 style={{ margin: '0 0 8px 0', color: '#333' }}>{task.title}</h4>
-                  <p style={{ margin: 0, fontSize: '13px', color: '#666' }}>{task.description}</p>
-                  <div style={{ marginTop: '10px', fontSize: '11px', color: '#999', textAlign: 'right' }}>
-                    {viewMode === 'myTasks' ? `From: ${task.creator?.username}` : `To: ${task.assignee?.username}`}
-                  </div>
-                </div>
-              ))}
+      {viewMode === 'giveTasks' && (
+        <form onSubmit={handleCreateTask} className="card" style={{ marginBottom: '24px' }}>
+          <h2 style={{ margin: '0 0 16px', fontSize: '1.05rem', color: '#1e293b' }}>Atribuie un task nou</h2>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label className="label" htmlFor="task-title">Titlu</label>
+              <input
+                id="task-title"
+                className="input"
+                type="text"
+                placeholder="ex: Actualizează pagina de start"
+                value={newTask.title}
+                onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+              />
+            </div>
+
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label className="label" htmlFor="task-assignee">Responsabil</label>
+              <select
+                id="task-assignee"
+                className="select"
+                value={newTask.assigneeId}
+                onChange={(e) => setNewTask({ ...newTask, assigneeId: e.target.value })}
+              >
+                <option value="">Selectează un utilizator</option>
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.username || user.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label className="label" htmlFor="task-due">Termen limită (opțional)</label>
+              <input
+                id="task-due"
+                className="input"
+                type="date"
+                value={newTask.dueDate}
+                onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
+              />
             </div>
           </div>
-        ))}
-      </div>
+
+          <div className="field" style={{ marginTop: '16px', marginBottom: '16px' }}>
+            <label className="label" htmlFor="task-description">Descriere</label>
+            <textarea
+              id="task-description"
+              className="textarea"
+              rows={2}
+              placeholder="Ce trebuie făcut?"
+              value={newTask.description}
+              onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
+            />
+          </div>
+
+          <button type="submit" className="btn btn--primary" disabled={creating}>
+            {creating ? 'Se creează...' : '+ Creează task'}
+          </button>
+        </form>
+      )}
+
+      {loading ? (
+        <div className="empty-state">Se încarcă taskurile...</div>
+      ) : (
+        <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', paddingBottom: '12px' }}>
+          {TASK_STATUSES.map((status) => {
+            const columnTasks = tasks.filter((task) => task.status === status);
+
+            return (
+              <section
+                key={status}
+                onDragOver={handleDragOver}
+                onDrop={(event) => handleDrop(event, status)}
+                aria-label={`Coloana ${taskStatusLabel(status)}`}
+                style={{
+                  flex: '1 0 240px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  padding: '14px',
+                  backgroundColor: '#f1f5f9',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '12px'
+                }}
+              >
+                <h2
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    margin: '0 0 12px',
+                    paddingBottom: '10px',
+                    borderBottom: `1px solid ${colors.borderStrong}`,
+                    fontSize: '0.85rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    color: '#475569'
+                  }}
+                >
+                  <span>{taskStatusLabel(status)}</span>
+                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>{columnTasks.length}</span>
+                </h2>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
+                  {columnTasks.length === 0 && (
+                    <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8', fontStyle: 'italic' }}>
+                      Niciun task aici.
+                    </p>
+                  )}
+
+                  {columnTasks.map((task) => (
+                    <article
+                      key={task.id}
+                      draggable
+                      onDragStart={(event) => handleDragStart(event, task.id)}
+                      style={{
+                        padding: '14px',
+                        backgroundColor: '#ffffff',
+                        border: `1px solid ${colors.border}`,
+                        borderLeft: `4px solid ${isOverdue(task) ? '#dc2626' : colors.accent}`,
+                        borderRadius: '8px',
+                        boxShadow: '0 1px 2px rgba(15, 23, 42, 0.06)',
+                        cursor: 'grab'
+                      }}
+                    >
+                      <h3 style={{ margin: '0 0 6px', fontSize: '0.95rem', color: '#1e293b' }}>{task.title}</h3>
+
+                      {task.description && (
+                        <p style={{ margin: '0 0 10px', fontSize: '13px', color: '#475569' }}>
+                          {task.description}
+                        </p>
+                      )}
+
+                      {task.dueLine && (
+                        <p
+                          style={{
+                            margin: '0 0 10px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: isOverdue(task) ? '#b91c1c' : '#64748b'
+                          }}
+                        >
+                          {isOverdue(task) ? '⚠️ Depășit: ' : '🗓️ Scadent: '}
+                          {formatDate(task.dueLine)}
+                        </p>
+                      )}
+
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                          {viewMode === 'myTasks'
+                            ? `De la: ${task.creator?.username || '—'}`
+                            : `Către: ${task.assignee?.username || '—'}`}
+                        </span>
+
+                        <select
+                          className="select"
+                          aria-label={`Schimbă statusul taskului ${task.title}`}
+                          value={task.status}
+                          onChange={(e) => changeStatus(task.id, e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ width: 'auto', padding: '4px 8px', fontSize: '12px' }}
+                        >
+                          {TASK_STATUSES.map((option) => (
+                            <option key={option} value={option}>
+                              {taskStatusLabel(option)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="field-hint" style={{ marginTop: '12px' }}>
+        Poți muta un task între coloane prin drag & drop sau din meniul de status de pe card.
+      </p>
     </div>
   );
 }
