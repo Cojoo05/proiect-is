@@ -1,12 +1,16 @@
 package com.proiect.is.proiect_is.controller;
 
 import com.proiect.is.proiect_is.model.Announcement;
+import com.proiect.is.proiect_is.model.AppNotification;
 import com.proiect.is.proiect_is.model.User;
 import com.proiect.is.proiect_is.repository.AnnouncementRepository;
+import com.proiect.is.proiect_is.repository.AppNotificationRepository;
 import com.proiect.is.proiect_is.repository.UserRepository;
 import com.proiect.is.proiect_is.service.SystemRoleService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -27,13 +31,19 @@ public class AnnouncementController {
 
     private final AnnouncementRepository announcementRepository;
     private final UserRepository userRepository;
+    private final AppNotificationRepository notificationRepository;
     private final SystemRoleService systemRoleService;
+
+    @Autowired(required = false)
+    private SimpMessagingTemplate messagingTemplate;
 
     public AnnouncementController(AnnouncementRepository announcementRepository,
                                   UserRepository userRepository,
+                                  AppNotificationRepository notificationRepository,
                                   SystemRoleService systemRoleService) {
         this.announcementRepository = announcementRepository;
         this.userRepository = userRepository;
+        this.notificationRepository = notificationRepository;
         this.systemRoleService = systemRoleService;
     }
 
@@ -71,8 +81,68 @@ public class AnnouncementController {
         announcement.setUpdatedAt(null);
         announcement.setAuthor(author);
 
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(announcementRepository.save(announcement));
+        Announcement saved = announcementRepository.save(announcement);
+
+        // Notificăm toți ceilalți utilizatori că a fost publicat un anunț nou.
+        notifyOtherUsers(author, saved);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    }
+
+    /**
+     * Creează câte o notificare „Anunț nou” pentru fiecare utilizator, cu excepția autorului.
+     * Notificarea este salvată în bază de date (pentru dropdown-ul de Notificări) și
+     * publicată și prin WebSocket, pentru actualizare în timp real.
+     */
+    private void notifyOtherUsers(User author, Announcement announcement) {
+        String senderName = author.getUsername();
+        String notifTitle = "Anunț nou: " + announcement.getTitle();
+
+        String preview = buildPreview(announcement.getContent());
+        String notifMsg = (senderName != null ? senderName : "Cineva") +
+                " a publicat un anunț nou." + (preview != null ? " " + preview : "");
+
+        for (User recipient : userRepository.findAll()) {
+            // Autorul nu primește notificare pentru propriul anunț.
+            if (recipient.getId() != null && recipient.getId().equals(author.getId())) {
+                continue;
+            }
+
+            AppNotification notif = new AppNotification(
+                    recipient.getId(),
+                    author.getId(),
+                    senderName,
+                    "announcement",
+                    notifTitle,
+                    notifMsg
+            );
+            notif.setCreatedAt(LocalDateTime.now());
+
+            AppNotification savedNotif = notificationRepository.save(notif);
+
+            if (messagingTemplate != null) {
+                try {
+                    messagingTemplate.convertAndSend(
+                            "/topic/users/" + recipient.getId() + "/notifications",
+                            savedNotif
+                    );
+                } catch (Exception ignored) {
+                    // WebSocket-ul este opțional; notificarea e deja salvată în DB.
+                }
+            }
+        }
+    }
+
+    /** Primele ~140 de caractere din conținut, pe o singură linie. */
+    private String buildPreview(String content) {
+        if (content == null || content.isBlank()) {
+            return null;
+        }
+        String clean = content.trim().replaceAll("\\s+", " ");
+        if (clean.length() > 140) {
+            clean = clean.substring(0, 140) + "…";
+        }
+        return clean;
     }
 
     @PutMapping("/{id}")

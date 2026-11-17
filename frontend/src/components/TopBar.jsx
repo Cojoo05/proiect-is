@@ -456,6 +456,46 @@ export default function TopBar({ currentUser, setCurrentUser }) {
                             {/* Notifications */}
               {calendarNotifs.length > 0 && (
                 <div>
+                  {calendarNotifs.filter(n => n.type === 'announcement').length > 0 && (
+                    <div>
+                      <div style={sectionLabelStyle}>Anunțuri</div>
+                      {calendarNotifs.filter(n => n.type === 'announcement').map(n => (
+                        <div key={n.id} style={notifRowStyle}>
+                          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                            <span style={{ fontSize: '20px', flexShrink: 0 }}>📢</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={notifTitleStyle}>{n.title}</div>
+                              <div style={notifSubStyle}>{n.message}</div>
+                              {n.createdAt && (
+                                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px' }}>
+                                  🕒 {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '8px', paddingLeft: '30px' }}>
+                            <button
+                              onClick={() => {
+                                handleMarkNotifRead(n.id);
+                                setOpen(false);
+                                navigate('/announcements');
+                              }}
+                              style={acceptBtnStyle}
+                            >
+                              📢 Vezi anunțul
+                            </button>
+                            <button
+                              onClick={() => handleMarkNotifRead(n.id)}
+                              style={declineBtnStyle}
+                            >
+                              Marchează citit
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {calendarNotifs.filter(n => n.type === 'task_assigned').length > 0 && (
                     <div>
                       <div style={sectionLabelStyle}>Task-uri Atribuite</div>
@@ -496,10 +536,10 @@ export default function TopBar({ currentUser, setCurrentUser }) {
                     </div>
                   )}
 
-                  {calendarNotifs.filter(n => n.type !== 'task_assigned').length > 0 && (
+                  {calendarNotifs.filter(n => n.type !== 'task_assigned' && n.type !== 'announcement').length > 0 && (
                     <div>
                       <div style={sectionLabelStyle}>Invitații Ședințe Google Meet</div>
-                      {calendarNotifs.filter(n => n.type !== 'task_assigned').map(n => (
+                      {calendarNotifs.filter(n => n.type !== 'task_assigned' && n.type !== 'announcement').map(n => (
                         <div key={n.id} style={notifRowStyle}>
                           <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
                             <span style={{ fontSize: '20px', flexShrink: 0 }}>🎥</span>
