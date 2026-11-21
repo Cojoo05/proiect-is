@@ -78,7 +78,7 @@ function App() {
             <Route path="/knowledge" element={<KnowledgePage currentUser={currentUser} />} />
             <Route path="/announcements" element={<AnnouncementsPage currentUser={currentUser} />} />
             <Route path="/meeting-rooms" element={<MeetingRooms currentUser={currentUser} />} />
-            <Route path="/for-me" element={<ForMeDashboard />} />
+            <Route path="/for-me" element={<ForMeDashboard currentUser={currentUser} setCurrentUser={setCurrentUser} />} />
             <Route path="/for-me/notes" element={<NotesPage currentUser={currentUser} />} />
             <Route path="/for-me/reminders" element={<RemindersPage currentUser={currentUser} />} />
             <Route path="*" element={<NotFound />} />

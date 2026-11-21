@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../config';
 
 /* ───────────────────────── Design Corporatist ─────────────────────────── */
@@ -41,8 +41,6 @@ function getDayName(dateStr) {
 ══════════════════════════════════════════════════════════════════════════ */
 function Calendar({ currentUser }) {
   const navigate = useNavigate();
-  const location = useLocation();
-  const cameFromProfile = location.state?.fromProfile === true;
   const todayKey = new Date().toISOString().split('T')[0];
 
   const GOOGLE_CLIENT_ID = '600998152273-t58c63k8l1vk772cqrnhocil9f1qo35u.apps.googleusercontent.com';
@@ -78,8 +76,14 @@ function Calendar({ currentUser }) {
 
   /* ── Căutare Rapidă & Filtre ── */
   const [searchQuery, setSearchQuery] = useState('');
-  // quickFilter: 'all' | 'meets' | 'today'
+  // filterType: 'all' | 'video' | 'events'
+  const [filterType,  setFilterType]  = useState('all');
+  // quickFilter: 'all' (Active & Viitoare) | 'today' | 'past'
   const [quickFilter, setQuickFilter] = useState('all');
+
+  /* ── Month/Year Picker ── */
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [showYearPicker,  setShowYearPicker]  = useState(false);
 
   /* ── Google OAuth Token ── */
   const [googleToken, setGoogleToken] = useState(() => localStorage.getItem('google_access_token') || null);
@@ -116,6 +120,13 @@ function Calendar({ currentUser }) {
   useEffect(() => {
     const t = setInterval(() => setNowTime(new Date()), 20000);
     return () => clearInterval(t);
+  }, []);
+
+  // Închide picker-ele când se face click în afara lor
+  useEffect(() => {
+    const handler = () => { setShowMonthPicker(false); setShowYearPicker(false); };
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
   }, []);
 
   // Persistență locală
@@ -564,7 +575,12 @@ function Calendar({ currentUser }) {
   const filteredEvents = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return events.filter(ev => {
-      // quickFilter: 'all' (Ședințe Active & Viitoare) | 'today' (Doar Astăzi) | 'past' (Arhivă Trecute)
+      // 1. Filtrare după Tip: 'all' | 'video' (conferințe video Google Meet) | 'events' (evenimente simple / fizice)
+      const isVideo = Boolean(ev.meetLink || ev.hasGoogleMeet);
+      if (filterType === 'video' && !isVideo) return false;
+      if (filterType === 'events' && isVideo) return false;
+
+      // 2. Filtrare după Perioadă: 'all' (Active & Viitoare) | 'today' (Astăzi) | 'past' (Arhivă Trecute)
       if (quickFilter === 'today' && ev.date !== todayKey) return false;
       if (quickFilter === 'all' && ev.date && ev.date < todayKey) return false;
       if (quickFilter === 'past' && (!ev.date || ev.date >= todayKey)) return false;
@@ -579,7 +595,7 @@ function Calendar({ currentUser }) {
 
       return true;
     });
-  }, [events, quickFilter, searchQuery, todayKey]);
+  }, [events, filterType, quickFilter, searchQuery, todayKey]);
 
   // La apăsare pe o zi, utilizatorul vede TOATE ședințele din acea zi (inclusiv cele trecute)
   const selectedDayEvents = useMemo(() =>
@@ -596,10 +612,9 @@ function Calendar({ currentUser }) {
     [filteredEvents]
   );
 
-  const meetsEvents = useMemo(() =>
-    events.filter(e => Boolean(e.meetLink || e.hasGoogleMeet) && (!e.date || e.date >= todayKey))
-          .sort((a, b) => a.date.localeCompare(b.date) || (a.startTime || '').localeCompare(b.startTime || '')),
-    [events, todayKey]
+  const videoEventsCount = useMemo(() =>
+    events.filter(e => Boolean(e.meetLink || e.hasGoogleMeet)).length,
+    [events]
   );
 
   /* ════════════════ Stiluri Input Corporatiste ════════════════ */
@@ -634,7 +649,7 @@ function Calendar({ currentUser }) {
       {toastMessage && (
         <div style={{
           position: 'fixed', bottom: '24px', right: '24px',
-          backgroundColor: toastType === 'warn' ? '#78350f' : PRIMARY_NAVY,
+          backgroundColor: toastType === 'warn' ? '#92400e' : '#1e293b',
           color: '#ffffff', padding: '14px 22px', borderRadius: '10px',
           boxShadow: '0 10px 25px rgba(0,0,0,0.25)', zIndex: 99999,
           fontWeight: '600', fontSize: '13px', maxWidth: '440px',
@@ -698,84 +713,25 @@ function Calendar({ currentUser }) {
 
       {/* ══════════════════ ANTET CORPORATIST (TOP BAR) ══════════════════ */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '18px' }}>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          {cameFromProfile ? (
-            <button
-              onClick={() => navigate('/for-me')}
-              style={{
-                padding: '8px 16px', backgroundColor: '#09090b',
-                border: '1px solid #3f3f46', borderRadius: '8px',
-                fontWeight: '700', cursor: 'pointer', color: '#ffffff',
-                display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                transition: 'all 0.15s ease'
-              }}
-              onMouseEnter={e => e.currentTarget.style.backgroundColor = '#18181b'}
-              onMouseLeave={e => e.currentTarget.style.backgroundColor = '#09090b'}
-            >
-              ← Înapoi la Profil
-            </button>
-          ) : (
-            <button
-              onClick={() => navigate('/dashboard')}
-              style={{
-                padding: '8px 16px', backgroundColor: '#ffffff',
-                border: BORDER_LIGHT, borderRadius: '8px',
-                fontWeight: '600', cursor: 'pointer', color: '#475569',
-                display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px',
-                transition: 'background 0.15s'
-              }}
-              onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'}
-              onMouseLeave={e => e.currentTarget.style.backgroundColor = '#ffffff'}
-            >
-              ← Înapoi la Dashboard
-            </button>
-          )}
-
-          {/* Navigator Lună cu Lună (Fără sărituri de ani « și ») */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#f1f5f9', padding: '3px 8px', borderRadius: '8px', border: BORDER_LIGHT }}>
-            <button
-              onClick={() => setCurrentDate(new Date(year, month - 1, 1))}
-              title="Luna anterioară"
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: '800', fontSize: '13px', color: '#334155', padding: '4px 8px' }}
-            >
-              ◀
-            </button>
-            <span
-              onClick={() => setActiveTab('month')}
-              title="Apasă pentru vederea lunară"
-              style={{ fontSize: '13px', fontWeight: '700', color: PRIMARY_NAVY, padding: '0 8px', cursor: 'pointer' }}
-            >
-              📅 {monthNames[month]} {year}
-            </span>
-            <button
-              onClick={() => setCurrentDate(new Date(year, month + 1, 1))}
-              title="Luna următoare"
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: '800', fontSize: '13px', color: '#334155', padding: '4px 8px' }}
-            >
-              ▶
-            </button>
-            <button
-              onClick={() => { const n = new Date(); setCurrentDate(n); setSelectedDate(todayKey); }}
-              title="Mergi la data de astăzi"
-              style={{ background: '#ffffff', border: BORDER_LIGHT, borderRadius: '4px', fontSize: '11px', fontWeight: '700', color: '#2563eb', padding: '3px 7px', cursor: 'pointer', marginLeft: '4px' }}
-            >
-              Azi
-            </button>
-          </div>
+        <div>
+          <h1 style={{ margin: 0, fontSize: '24px', fontWeight: '800', color: PRIMARY_NAVY }}>
+            📅 Calendar & Ședințe
+          </h1>
+          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
+            Programul activităților și ședințelor de lucru ale echipei
+          </p>
         </div>
 
-        {/* Butoane Acțiune (FĂRĂ BUTONUL DE QUICK MEET) */}
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+        {/* UNICUL BUTON DIN HEADER: Programează Ședință */}
+        <div>
           <button
             onClick={() => openAddModal()}
             style={{
-              padding: '9px 20px', cursor: 'pointer',
+              padding: '10px 22px', cursor: 'pointer',
               backgroundColor: BRAND_PURPLE, color: '#ffffff',
               border: 'none', borderRadius: '8px', fontWeight: '700',
               fontSize: '13px', display: 'flex', alignItems: 'center',
-              gap: '6px', boxShadow: '0 2px 6px rgba(90,61,92,0.25)',
+              gap: '8px', boxShadow: '0 2px 6px rgba(90,61,92,0.25)',
               transition: 'background 0.15s'
             }}
             onMouseEnter={e => e.currentTarget.style.backgroundColor = BRAND_PURPLE_HOV}
@@ -783,37 +739,6 @@ function Calendar({ currentUser }) {
           >
             + Programează Ședință
           </button>
-
-          {/* Sincronizare Google Calendar */}
-          {!googleToken ? (
-            <button
-              onClick={handleGoogleAuth}
-              style={{
-                padding: '8px 16px', backgroundColor: '#ffffff', color: PRIMARY_NAVY,
-                border: BORDER_LIGHT, borderRadius: '8px', fontWeight: '600',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px'
-              }}
-            >
-              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" style={{ width: '15px' }} />
-              Sincronizează cu Google
-            </button>
-          ) : (
-            <div style={{
-              display: 'flex', gap: '8px', alignItems: 'center',
-              backgroundColor: '#f0fdf4', padding: '6px 12px',
-              borderRadius: '8px', border: '1px solid #bbf7d0'
-            }}>
-              <span style={{ color: '#166534', fontWeight: '700', fontSize: '12px' }}>● Google Conectat</span>
-              <button onClick={fetchGoogleEvents} disabled={loading}
-                style={{ background: '#ffffff', border: '1px solid #bbf7d0', color: '#166534', borderRadius: '6px', padding: '3px 8px', fontSize: '11px', cursor: 'pointer', fontWeight: '700' }}>
-                {loading ? '...' : 'Sync'}
-              </button>
-              <button onClick={handleDisconnectGoogle}
-                style={{ background: 'transparent', border: 'none', color: '#dc2626', fontSize: '11px', cursor: 'pointer', fontWeight: '600' }}>
-                Deconectează
-              </button>
-            </div>
-          )}
         </div>
       </div>
 
@@ -822,12 +747,11 @@ function Calendar({ currentUser }) {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         marginBottom: '22px', flexWrap: 'wrap', gap: '14px'
       }}>
-        {/* Tab-uri cu Animații Stil For Me */}
+        {/* Tab-uri: Agendă și Vedere Lunară */}
         <div style={{ display: 'flex', gap: '4px', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '10px' }}>
           {[
             { id: 'agenda', icon: '📋', label: `Agendă (${agendaEvents.length})` },
-            { id: 'month',  icon: '📅', label: 'Vedere Lunară' },
-            { id: 'meets',  icon: '🎥', label: `Conferințe Video (${meetsEvents.length})` }
+            { id: 'month',  icon: '📅', label: 'Vedere Lunară' }
           ].map(tab => (
             <button
               key={tab.id}
@@ -840,7 +764,7 @@ function Calendar({ currentUser }) {
           ))}
         </div>
 
-        {/* Căutare Rapidă (Clear instant) + Exact 3 Filtre Simple */}
+        {/* Căutare Rapidă + Filtre pentru Agendă (Video / Evenimente / Perioadă) */}
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
 
           {/* Câmp Căutare */}
@@ -855,11 +779,11 @@ function Calendar({ currentUser }) {
               onChange={e => setSearchQuery(e.target.value)}
               style={{
                 ...corporateInputStyle,
-                width: '210px',
+                width: '180px',
                 paddingLeft: '32px',
                 paddingRight: searchQuery ? '28px' : '10px',
-                paddingTop: '8px',
-                paddingBottom: '8px',
+                paddingTop: '7px',
+                paddingBottom: '7px',
                 fontSize: '13px'
               }}
             />
@@ -879,20 +803,43 @@ function Calendar({ currentUser }) {
             )}
           </div>
 
-          {/* Filtre Rapide: Active, Astăzi, Arhivă */}
-          <div style={{ display: 'flex', gap: '4px', backgroundColor: '#f8fafc', border: BORDER_LIGHT, padding: '3px', borderRadius: '8px' }}>
+          {/* Filtru Tip: Toate | Conferințe Video | Evenimente */}
+          <div style={{ display: 'flex', gap: '3px', backgroundColor: '#f8fafc', border: BORDER_LIGHT, padding: '3px', borderRadius: '8px' }}>
             {[
-              { id: 'all',   label: 'Toate Ședințele (Active)' },
+              { id: 'all',    label: `Toate (${events.length})` },
+              { id: 'video',  label: `🎥 Video (${videoEventsCount})` },
+              { id: 'events', label: `📅 Evenimente (${Math.max(0, events.length - videoEventsCount)})` }
+            ].map(f => (
+              <button
+                key={f.id}
+                onClick={() => setFilterType(f.id)}
+                style={{
+                  padding: '5px 11px', border: 'none', borderRadius: '6px',
+                  cursor: 'pointer', fontWeight: '600', fontSize: '12px',
+                  backgroundColor: filterType === f.id ? PRIMARY_NAVY : 'transparent',
+                  color: filterType === f.id ? '#ffffff' : '#64748b',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Filtru Perioadă: Active | Astăzi | Trecute */}
+          <div style={{ display: 'flex', gap: '3px', backgroundColor: '#f8fafc', border: BORDER_LIGHT, padding: '3px', borderRadius: '8px' }}>
+            {[
+              { id: 'all',   label: 'Active' },
               { id: 'today', label: 'Astăzi' },
-              { id: 'past',  label: 'Arhivă Trecute' }
+              { id: 'past',  label: 'Trecute' }
             ].map(f => (
               <button
                 key={f.id}
                 onClick={() => setQuickFilter(f.id)}
                 style={{
-                  padding: '5px 12px', border: 'none', borderRadius: '6px',
+                  padding: '5px 11px', border: 'none', borderRadius: '6px',
                   cursor: 'pointer', fontWeight: '600', fontSize: '12px',
-                  backgroundColor: quickFilter === f.id ? PRIMARY_NAVY : 'transparent',
+                  backgroundColor: quickFilter === f.id ? BRAND_PURPLE : 'transparent',
                   color: quickFilter === f.id ? '#ffffff' : '#64748b',
                   transition: 'all 0.15s ease'
                 }}
@@ -1136,7 +1083,7 @@ function Calendar({ currentUser }) {
 
           {/* Butoane navigație lună cu lună (Fără sărituri de an) */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', position: 'relative' }}>
               <button
                 onClick={() => setCurrentDate(new Date(year, month - 1, 1))}
                 title="Luna anterioară"
@@ -1157,13 +1104,87 @@ function Calendar({ currentUser }) {
               >
                 ▶
               </button>
-              <h2 style={{ margin: '0 0 0 10px', fontSize: '18px', fontWeight: '800', color: PRIMARY_NAVY }}>
-                {monthNames[month]} {year}
-              </h2>
+
+              {/* Click pe lună sau an */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '10px', position: 'relative' }} onClick={e => e.stopPropagation()}>
+                {/* Lună - click */}
+                <span
+                  onClick={() => { setShowMonthPicker(p => !p); setShowYearPicker(false); }}
+                  style={{ fontSize: '18px', fontWeight: '800', color: PRIMARY_NAVY, cursor: 'pointer', padding: '4px 8px', borderRadius: '6px', userSelect: 'none', transition: 'background 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                >
+                  {monthNames[month]}
+                </span>
+                {/* An - click */}
+                <span
+                  onClick={() => { setShowYearPicker(p => !p); setShowMonthPicker(false); }}
+                  style={{ fontSize: '18px', fontWeight: '800', color: PRIMARY_NAVY, cursor: 'pointer', padding: '4px 8px', borderRadius: '6px', userSelect: 'none', transition: 'background 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                >
+                  {year}
+                </span>
+
+                {/* Picker Luni */}
+                {showMonthPicker && (
+                  <div style={{
+                    position: 'absolute', top: '42px', left: 0, zIndex: 9999,
+                    backgroundColor: '#ffffff', borderRadius: '12px',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.14)', border: '1px solid #e2e8f0',
+                    padding: '12px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px',
+                    minWidth: '220px', animation: 'popIn 0.15s ease'
+                  }}>
+                    {monthNames.map((mn, mi) => (
+                      <button
+                        key={mn}
+                        onClick={() => { setCurrentDate(new Date(year, mi, 1)); setShowMonthPicker(false); }}
+                        style={{
+                          padding: '8px 10px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                          backgroundColor: mi === month ? '#5a3d5c' : '#f8fafc',
+                          color: mi === month ? '#fff' : PRIMARY_NAVY,
+                          fontWeight: mi === month ? '700' : '500',
+                          fontSize: '13px', transition: 'all 0.1s'
+                        }}
+                        onMouseEnter={e => { if (mi !== month) e.currentTarget.style.backgroundColor = '#f1f5f9'; }}
+                        onMouseLeave={e => { if (mi !== month) e.currentTarget.style.backgroundColor = '#f8fafc'; }}
+                      >
+                        {mn.substring(0, 3)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Picker Ani */}
+                {showYearPicker && (
+                  <div style={{
+                    position: 'absolute', top: '42px', left: '110px', zIndex: 9999,
+                    backgroundColor: '#ffffff', borderRadius: '12px',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.14)', border: '1px solid #e2e8f0',
+                    padding: '12px', display: 'flex', flexDirection: 'column', gap: '4px',
+                    minWidth: '110px', animation: 'popIn 0.15s ease'
+                  }}>
+                    {Array.from({ length: 11 }, (_, i) => year - 5 + i).map(yr => (
+                      <button
+                        key={yr}
+                        onClick={() => { setCurrentDate(new Date(yr, month, 1)); setShowYearPicker(false); }}
+                        style={{
+                          padding: '7px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                          backgroundColor: yr === year ? '#5a3d5c' : '#f8fafc',
+                          color: yr === year ? '#fff' : PRIMARY_NAVY,
+                          fontWeight: yr === year ? '700' : '500',
+                          fontSize: '14px', transition: 'all 0.1s'
+                        }}
+                        onMouseEnter={e => { if (yr !== year) e.currentTarget.style.backgroundColor = '#f1f5f9'; }}
+                        onMouseLeave={e => { if (yr !== year) e.currentTarget.style.backgroundColor = '#f8fafc'; }}
+                      >
+                        {yr}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <span style={{ fontSize: '13px', color: '#64748b' }}>
-              Selectați o zi din calendar pentru detalii complete
-            </span>
           </div>
 
           {/* Antet Zile */}
@@ -1251,140 +1272,6 @@ function Calendar({ currentUser }) {
               );
             })}
           </div>
-        </div>
-      )}
-
-      {/* ══════════════════ TAB 3: CONFERINȚE VIDEO ══════════════════ */}
-      {activeTab === 'meets' && (
-        <div style={{ backgroundColor: CARD_BG, borderRadius: RADIUS_LG, padding: '24px', border: BORDER_LIGHT, boxShadow: CARD_SHADOW, animation: 'fadeIn 0.25s ease' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '16px', color: PRIMARY_NAVY, fontWeight: '700' }}>
-                Conferințe Video Google Meet Programate ({meetsEvents.length})
-              </h3>
-              <span style={{ fontSize: '13px', color: '#64748b' }}>
-                Acces direct la camerele de ședință dedicate proiectului
-              </span>
-            </div>
-            <button
-              onClick={() => openAddModal()}
-              style={{ padding: '8px 16px', backgroundColor: BRAND_PURPLE, color: '#fff', border: 'none', borderRadius: '6px', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}
-            >
-              + Programează Conferință
-            </button>
-          </div>
-
-          {meetsEvents.length === 0 ? (
-            <div style={{ padding: '50px 20px', textAlign: 'center', color: '#64748b' }}>
-              <p style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>
-                Nicio conferință video programată în prezent.
-              </p>
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
-              {meetsEvents.map(ev => {
-                const isLive = isMeetingLiveNow(ev);
-                const meetUrl = ev.meetLink || 'https://meet.google.com/new';
-
-                return (
-                  <div
-                    key={ev.id}
-                    style={{
-                      padding: '20px', borderRadius: '12px',
-                      backgroundColor: isLive ? '#fff5f5' : '#ffffff',
-                      border: isLive ? '2px solid #ef4444' : BORDER_LIGHT,
-                      boxShadow: isLive ? '0 0 20px rgba(239, 68, 68, 0.2)' : CARD_SHADOW,
-                      borderLeft: `5px solid ${isLive ? '#dc2626' : ev.isDelayed ? '#d97706' : '#1a73e8'}`
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
-                      <span style={{ fontWeight: '700', color: PRIMARY_NAVY, fontSize: '15px' }}>
-                        {ev.title}
-                      </span>
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        {isLive && (
-                          <span style={{
-                            fontSize: '11px', backgroundColor: '#dc2626', color: '#fff',
-                            padding: '3px 8px', borderRadius: '20px', fontWeight: '800',
-                            display: 'inline-flex', alignItems: 'center', gap: '5px'
-                          }}>
-                            ● CONFERINȚĂ PORNITĂ
-                          </span>
-                        )}
-                        {ev.isDelayed && (
-                          <span style={{
-                            fontSize: '11px', backgroundColor: '#fef3c7', color: '#b45309',
-                            border: '1px solid #fde68a', padding: '2px 8px', borderRadius: '6px', fontWeight: '700'
-                          }}>
-                            ⏳ AMÂNATĂ
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div style={{ fontSize: '13px', color: '#2563eb', fontWeight: '600', marginTop: '6px' }}>
-                      📅 {ev.date} • ⏰ {ev.allDay ? 'Toată ziua' : `${ev.startTime} – ${ev.endTime}`}
-                    </div>
-
-                    {ev.isDelayed && (
-                      <div style={{ marginTop: '6px', fontSize: '12px', color: '#b45309', fontWeight: '500', backgroundColor: '#fffbeb', padding: '4px 8px', borderRadius: '4px' }}>
-                        ⚠️ {ev.delayReason || 'Această conferință a fost decalată de organizator.'}
-                      </div>
-                    )}
-
-                    {ev.attendees && (
-                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
-                        Invitați: {ev.attendees}
-                      </div>
-                    )}
-
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '16px', flexWrap: 'wrap' }}>
-                      <a
-                        href={meetUrl}
-                        target="_blank" rel="noreferrer"
-                        style={{
-                          fontSize: '12px',
-                          backgroundColor: isLive ? '#dc2626' : '#1a73e8',
-                          color: '#fff',
-                          padding: '8px 16px', borderRadius: '6px', fontWeight: '700',
-                          textDecoration: 'none',
-                          boxShadow: isLive ? '0 2px 6px rgba(220,38,38,0.3)' : '0 1px 2px rgba(26,115,232,0.2)'
-                        }}
-                      >
-                        {isLive ? '🔴 Conectare Live Acum' : '🎥 Intră în Google Meet'}
-                      </a>
-
-                      <button
-                        onClick={() => copyToClipboard(meetUrl)}
-                        style={{ fontSize: '12px', backgroundColor: '#ffffff', border: BORDER_LIGHT, color: '#334155', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}
-                      >
-                        Copiază Link
-                      </button>
-
-                      {/* Buton Amânare din card conferință */}
-                      {canModifyMeeting(ev) && (
-                        ev.isDelayed ? (
-                          <button
-                            onClick={() => handleSaveDelay(ev, '')}
-                            style={{ fontSize: '12px', backgroundColor: '#fef3c7', border: '1px solid #fde68a', color: '#b45309', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}
-                          >
-                            ↺ Anulează Amânarea
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => { setDelayModalEvent(ev); setDelayInput('15 minute'); }}
-                            style={{ fontSize: '12px', backgroundColor: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}
-                          >
-                            ⏳ Amână
-                          </button>
-                        )
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
       )}
 

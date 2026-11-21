@@ -50,13 +50,6 @@ function Dashboard({ currentUser }) {
       path: '/meeting-rooms'
     },
     {
-      id: 'for-me',
-      title: 'For Me',
-      icon: '👤',
-      description: 'Spațiul tău personal, notițe private și organizare zilnică',
-      path: '/for-me'
-    },
-    {
       id: 'projects',
       title: 'Projects',
       icon: '📁',
@@ -134,12 +127,12 @@ function Dashboard({ currentUser }) {
 
   return (
     <div style={{ minHeight: 'calc(100vh - 60px)', backgroundColor: '#f8fafc', fontFamily: 'sans-serif', width: '100%', boxSizing: 'border-box' }}>
-      <main style={{ width: '100%', boxSizing: 'border-box', padding: '36px 40px' }}>
-        <div style={{ marginBottom: '32px' }}>
-          <h2 style={{ margin: '0 0 6px 0', fontSize: '1.75rem', color: '#0f172a', fontWeight: '700' }}>
+      <main style={{ width: '100%', boxSizing: 'border-box', padding: '24px 32px' }}>
+        <div style={{ marginBottom: '20px' }}>
+          <h2 style={{ margin: '0 0 4px 0', fontSize: '1.6rem', color: '#0f172a', fontWeight: '700' }}>
             Aplicații & Module
           </h2>
-          <p style={{ margin: 0, color: '#64748b', fontSize: '15px' }}>
+          <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
             Selectează un modul pentru a începe lucrul.
           </p>
         </div>
@@ -147,8 +140,8 @@ function Dashboard({ currentUser }) {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: '24px'
+            gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+            gap: '18px'
           }}
         >
           {apps.map((app) => {
@@ -162,7 +155,7 @@ function Dashboard({ currentUser }) {
                   position: 'relative',
                   backgroundColor: '#ffffff',
                   borderRadius: '12px',
-                  padding: '24px',
+                  padding: '20px 18px',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
@@ -213,16 +206,16 @@ function Dashboard({ currentUser }) {
 
                 <div
                   style={{
-                    width: '56px',
-                    height: '56px',
+                    width: '50px',
+                    height: '50px',
                     borderRadius: '12px',
                     backgroundColor: enabled ? '#f6eff7' : '#f1f5f9',
                     color: enabled ? '#5a3d5c' : '#94a3b8',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: '28px',
-                    marginBottom: '16px'
+                    fontSize: '26px',
+                    marginBottom: '12px'
                   }}
                 >
                   {app.icon}

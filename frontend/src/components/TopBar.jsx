@@ -6,99 +6,122 @@ import { Client } from '@stomp/stompjs';
 
 const POLL_INTERVAL = 15_000;
 
+/* ── Paleta culori avatar deterministă ── */
+const AVATAR_COLORS = ['#5a3d5c','#1d4ed8','#065f46','#991b1b','#92400e','#5b21b6','#0e7490','#9d174d'];
+function getUserColor(str) {
+  if (!str) return AVATAR_COLORS[0];
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h);
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+}
+
+const avatarStorageKey = (uid) => `profile_avatar_${uid || 'guest'}`;
+const statusStorageKey = (uid) => `profile_status_${uid || 'guest'}`;
+const bannerColorKey   = (uid) => `profile_banner_${uid || 'guest'}`;
+const displayNameStorageKey  = (uid) => `profile_display_name_${uid  || 'guest'}`;
+const bioStorageKey          = (uid) => `profile_bio_${uid || 'guest'}`;
+const memberSinceStorageKey  = (uid) => `profile_member_since_${uid || 'guest'}`;
+
+const STATUS_LIST = [
+  { id: 'online',    emoji: '🟢', label: 'Online',                  dot: '#22c55e', desc: 'Disponibil pentru echipă' },
+  { id: 'idle',      emoji: '🌙', label: 'Away / Inactiv',           dot: '#f59e0b', desc: 'La o pauză / Absent' },
+  { id: 'dnd',       emoji: '🔴', label: 'Nu deranja (Do Not Disturb)', dot: '#ef4444', desc: 'Fără notificări de lucru' },
+  { id: 'invisible', emoji: '⬜', label: 'Invizibil',                dot: '#94a3b8', desc: 'Vei apărea offline' },
+];
+
+const BANNER_COLORS = ['#5a3d5c','#1d4ed8','#065f46','#991b1b','#7c3aed','#0e7490','#9d174d','#92400e','#0f172a'];
+
 export default function TopBar({ currentUser, setCurrentUser }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [open, setOpen] = useState(false);
+  const [open,        setOpen]        = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [invitations, setInvitations] = useState([]);
-  const [recentConversations, setRecentConversations] = useState([]);
-  const [calendarNotifs, setCalendarNotifs] = useState([]);
+  const [invitations,          setInvitations]          = useState([]);
+  const [recentConversations,  setRecentConversations]  = useState([]);
+  const [calendarNotifs,       setCalendarNotifs]       = useState([]);
 
-  // Map of convId -> lastMsgId that the user has marked as read
   const [readMsgIds, setReadMsgIds] = useState(() => {
-    try {
-      const stored = localStorage.getItem(`read_conv_msgs_${currentUser?.id}`);
-      return stored ? JSON.parse(stored) : {};
-    } catch (_) {
-      return {};
-    }
+    try { const s = localStorage.getItem(`read_conv_msgs_${currentUser?.id}`); return s ? JSON.parse(s) : {}; } catch { return {}; }
   });
 
   const dropdownRef = useRef(null);
-  const profileRef = useRef(null);
+  const profileRef  = useRef(null);
   const stompClientRef = useRef(null);
+
+  /* ── Profile state ── */
+  const uid      = currentUser?.id;
+  const username = currentUser?.username || currentUser?.email || 'User';
+  const email    = currentUser?.email || '';
+  const role     = currentUser?.role  || 'Membru';
+  const initial  = username[0].toUpperCase();
+  const accentColor = getUserColor(username);
+
+  const [avatar,       setAvatar]       = useState(() => { try { return localStorage.getItem(avatarStorageKey(uid)) || null; } catch { return null; } });
+  const [status,       setStatus]       = useState(() => { try { return JSON.parse(localStorage.getItem(statusStorageKey(uid))) || STATUS_LIST[0]; } catch { return STATUS_LIST[0]; } });
+  const [bannerColor,  setBannerColor]  = useState(() => { try { return localStorage.getItem(bannerColorKey(uid)) || accentColor; } catch { return accentColor; } });
+  const [displayName,  setDisplayName]  = useState(() => { try { return localStorage.getItem(displayNameStorageKey(uid)) || ''; } catch { return ''; } });
+  const [bio,          setBio]          = useState(() => { try { return localStorage.getItem(bioStorageKey(uid)) || ''; } catch { return ''; } });
+  const [memberSince]                   = useState(() => { try { return localStorage.getItem(memberSinceStorageKey(uid)) || '14 Oct 2026'; } catch { return '14 Oct 2026'; } });
+  const [showStatus,   setShowStatus]   = useState(false);
+  const [showAccounts, setShowAccounts] = useState(false);
+
+  // Sync profile when updated from the full profile page
+  useEffect(() => {
+    const handleProfileSync = () => {
+      try { setAvatar(localStorage.getItem(avatarStorageKey(uid)) || null); } catch {}
+      try { setStatus(JSON.parse(localStorage.getItem(statusStorageKey(uid))) || STATUS_LIST[0]); } catch {}
+      try { setBannerColor(localStorage.getItem(bannerColorKey(uid)) || accentColor); } catch {}
+      try { setDisplayName(localStorage.getItem(displayNameStorageKey(uid)) || ''); } catch {}
+      try { setBio(localStorage.getItem(bioStorageKey(uid)) || ''); } catch {}
+    };
+    window.addEventListener('profile_updated', handleProfileSync);
+    return () => window.removeEventListener('profile_updated', handleProfileSync);
+  }, [uid, accentColor]);
+
+  const pickStatus = (s) => {
+    setStatus(s); setShowStatus(false);
+    try { localStorage.setItem(statusStorageKey(uid), JSON.stringify(s)); } catch {}
+    window.dispatchEvent(new Event('profile_updated'));
+  };
 
   const markConvAsRead = useCallback((convId, lastMsgId) => {
     if (!currentUser?.id || !convId) return;
     setReadMsgIds(prev => {
       const next = { ...prev, [convId]: lastMsgId || true };
-      try {
-        localStorage.setItem(`read_conv_msgs_${currentUser.id}`, JSON.stringify(next));
-      } catch (_) {}
+      try { localStorage.setItem(`read_conv_msgs_${currentUser.id}`, JSON.stringify(next)); } catch {}
       return next;
     });
   }, [currentUser?.id]);
 
-  // ── Helper to check if a conversation is unread ───────────────────────────
   const isConvUnread = useCallback((conv) => {
     const last = conv?.lastMessage || conv?.lastMsg;
     if (!last) return false;
-
     const senderId = last.senderId ?? last.sender?.id;
-    if (senderId && Number(senderId) === Number(currentUser?.id)) {
-      return false;
-    }
-
-    if (readMsgIds[conv.id] && (readMsgIds[conv.id] === last.id || readMsgIds[conv.id] === true)) {
-      return false;
-    }
-
-    if (conv.unreadCount !== undefined && conv.unreadCount !== null) {
-      return Number(conv.unreadCount) > 0;
-    }
-    if (last.isRead !== undefined) {
-      return !last.isRead;
-    }
+    if (senderId && Number(senderId) === Number(currentUser?.id)) return false;
+    if (readMsgIds[conv.id] && (readMsgIds[conv.id] === last.id || readMsgIds[conv.id] === true)) return false;
+    if (conv.unreadCount !== undefined && conv.unreadCount !== null) return Number(conv.unreadCount) > 0;
+    if (last.isRead !== undefined) return !last.isRead;
     return true;
   }, [currentUser?.id, readMsgIds]);
 
   const unreadMsgCount = recentConversations.filter(isConvUnread).length;
-  const totalCount = invitations.length + unreadMsgCount + calendarNotifs.length;
+  const totalCount     = invitations.length + unreadMsgCount + calendarNotifs.length;
 
-  // ── Fetch calendar notifications ─────────────────────────────────────────
   const fetchCalendarNotifs = useCallback(async () => {
     if (!currentUser?.id) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/notifications/user/${currentUser.id}/unread`);
-      if (res.ok) {
-        const data = await res.json();
-        setCalendarNotifs(Array.isArray(data) ? data : []);
-      }
-    } catch (_) {}
+    try { const res = await fetch(`${API_BASE_URL}/api/notifications/user/${currentUser.id}/unread`); if (res.ok) { const d = await res.json(); setCalendarNotifs(Array.isArray(d) ? d : []); } } catch {}
   }, [currentUser?.id]);
 
   const handleMarkNotifRead = async (notifId) => {
-    try {
-      await fetch(`${API_BASE_URL}/api/notifications/${notifId}/read`, { method: 'PUT' });
-      setCalendarNotifs(prev => prev.filter(n => n.id !== notifId));
-    } catch (_) {}
+    try { await fetch(`${API_BASE_URL}/api/notifications/${notifId}/read`, { method: 'PUT' }); setCalendarNotifs(prev => prev.filter(n => n.id !== notifId)); } catch {}
   };
 
-  // ── Fetch pending invitations ──────────────────────────────────────────────
   const fetchInvitations = useCallback(async () => {
     if (!currentUser?.id) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/projects/invitations/user/${currentUser.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setInvitations(Array.isArray(data) ? data : []);
-      }
-    } catch (_) {}
+    try { const res = await fetch(`${API_BASE_URL}/api/projects/invitations/user/${currentUser.id}`); if (res.ok) { const d = await res.json(); setInvitations(Array.isArray(d) ? d : []); } } catch {}
   }, [currentUser?.id]);
 
-  // ── Fetch recent conversations with messages ───────────────────────────────
   const fetchRecentMessages = useCallback(async () => {
     if (!currentUser?.id) return;
     try {
@@ -107,14 +130,10 @@ export default function TopBar({ currentUser, setCurrentUser }) {
         const data = await res.json();
         const convsWithMessages = (Array.isArray(data) ? data : [])
           .filter(conv => Boolean(conv.lastMessage || conv.lastMsg))
-          .sort((a, b) => {
-            const timeA = new Date(a.lastMessage?.sentAt || 0).getTime();
-            const timeB = new Date(b.lastMessage?.sentAt || 0).getTime();
-            return timeB - timeA;
-          });
+          .sort((a, b) => new Date(b.lastMessage?.sentAt || 0) - new Date(a.lastMessage?.sentAt || 0));
         setRecentConversations(convsWithMessages);
       }
-    } catch (_) {}
+    } catch {}
   }, [currentUser?.id]);
 
   // ── Listen for custom event when messages are read in MessagesPage ─────────
@@ -179,11 +198,24 @@ export default function TopBar({ currentUser, setCurrentUser }) {
       }
       if (profileRef.current && !profileRef.current.contains(e.target)) {
         setProfileOpen(false);
+        setShowStatus(false);
+        setShowAccounts(false);
       }
     };
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
+
+  // ── Prevent background scroll when profile popup is open ───────────────────
+  useEffect(() => {
+    if (profileOpen) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [profileOpen]);
 
   // ── Logout ────────────────────────────────────────────────────────────────
   const handleLogout = () => {
@@ -720,206 +752,399 @@ export default function TopBar({ currentUser, setCurrentUser }) {
         )}
       </div>
 
-      {/* ── Account icon + profile dropdown ─────────────────────────── */}
+
+      {/* ── Avatar + Discord-style profile card ──────────────────────── */}
       <div ref={profileRef} style={{ position: 'relative' }}>
+        {/* Avatar button */}
         <div
           onClick={() => setProfileOpen(o => !o)}
-          title={currentUser?.username || currentUser?.email || 'Cont'}
+          title="Profilul meu"
           style={{
-            width: '38px',
-            height: '38px',
-            borderRadius: '50%',
-            border: profileOpen ? '2px solid #5a3d5c' : '1px solid #d8b4e2',
-            backgroundColor: '#5a3d5c',
-            color: '#ffffff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '15px',
-            fontWeight: '700',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-            cursor: 'pointer',
-            userSelect: 'none',
-            flexShrink: 0,
-            transition: 'border 0.15s, box-shadow 0.15s',
+            width: '38px', height: '38px', borderRadius: '50%',
+            overflow: 'hidden', cursor: 'pointer', flexShrink: 0,
+            border: profileOpen ? `2px solid ${accentColor}` : '2px solid #d8b4e2',
+            boxShadow: profileOpen ? `0 0 0 3px ${accentColor}33` : '0 2px 6px rgba(90,61,92,0.2)',
+            position: 'relative', transition: 'all 0.15s',
           }}
         >
-          {(currentUser?.username || currentUser?.email || 'U')[0].toUpperCase()}
+          {avatar
+            ? <img src={avatar} alt="avatar" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+            : <div style={{ width:'100%', height:'100%', backgroundColor: accentColor, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'15px', fontWeight:'700', userSelect:'none' }}>{initial}</div>
+          }
+          {/* Status dot mic pe avatar */}
+          <div style={{
+            position:'absolute', bottom:'1px', right:'1px',
+            width:'11px', height:'11px', borderRadius:'50%',
+            backgroundColor: status.dot, border:'2px solid #e5e7eb',
+          }} />
         </div>
 
-        {/* Profile dropdown */}
+        {/* ── Discord-style profile card popup ── */}
         {profileOpen && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '46px',
-              right: 0,
-              width: '200px',
-              backgroundColor: '#ffffff',
-              borderRadius: '10px',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
-              border: '1px solid #e2e8f0',
-              overflow: 'hidden',
-              fontFamily: 'sans-serif',
-              zIndex: 10000,
-            }}
-          >
-            {/* User info header */}
+          <div style={{
+            position: 'absolute', top: '50px', right: 0,
+            width: '300px', borderRadius: '16px',
+            backgroundColor: '#ffffff',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.18), 0 0 1px rgba(0,0,0,0.1)',
+            border: '1px solid #e2e8f0',
+            overflow: 'visible', zIndex: 10000,
+            animation: 'profileCardIn 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+          }}>
+            <style>{`
+              @keyframes profileCardIn {
+                from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+                to   { opacity: 1; transform: translateY(0)   scale(1); }
+              }
+              @keyframes flyoutIn {
+                from { opacity: 0; transform: translateX(8px) scale(0.96); }
+                to   { opacity: 1; transform: translateX(0) scale(1); }
+              }
+            `}</style>
+
+            {/* Banner color - click enters profile */}
             <div
+              onClick={() => { setProfileOpen(false); navigate('/for-me'); }}
+              title="Apasă pentru a deschide profilul"
               style={{
-                padding: '14px 16px',
-                borderBottom: '1px solid #f1f5f9',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
+                height: '76px', backgroundColor: bannerColor, position: 'relative', cursor: 'pointer',
+                borderTopLeftRadius: '15px', borderTopRightRadius: '15px',
               }}
-            >
+            />
+
+            {/* Avatar overlapping banner — click → profil mare */}
+            <div style={{ padding: '0 16px', marginTop: '-38px', marginBottom: '8px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+              <div style={{ position: 'relative', cursor: 'pointer' }}
+                onClick={() => { setProfileOpen(false); navigate('/for-me'); }}
+                title="Deschide profilul"
+              >
+                <div style={{
+                  width: '74px', height: '74px', borderRadius: '50%',
+                  overflow: 'hidden', border: '4px solid #ffffff',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
+                  backgroundColor: accentColor,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {avatar
+                    ? <img src={avatar} alt="av" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <span style={{ fontSize: '28px', fontWeight: '800', color: '#fff', userSelect: 'none' }}>{initial}</span>
+                  }
+                </div>
+                {/* Status dot pe avatar - Deschide selectorul în stânga */}
+                <div
+                  onClick={e => {
+                    e.stopPropagation();
+                    setShowStatus(s => !s);
+                    setShowAccounts(false);
+                  }}
+                  style={{
+                    position: 'absolute', bottom: '3px', right: '3px',
+                    width: '22px', height: '22px', borderRadius: '50%',
+                    backgroundColor: status.dot, border: '3px solid #ffffff',
+                    cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'transform 0.15s ease',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.2)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                  title={`Status: ${status.label} (Apasă pentru a alege statusul)`}
+                />
+              </div>
+
+              {/* Tag subtil profil dreapta */}
               <div
+                onClick={() => { setProfileOpen(false); navigate('/for-me'); }}
                 style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  backgroundColor: '#5a3d5c',
-                  color: '#fff',
+                  padding: '5px 12px',
+                  backgroundColor: '#f1f5f9',
+                  color: '#475569',
+                  borderRadius: '20px',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: '700',
-                  fontSize: '14px',
-                  flexShrink: 0,
+                  gap: '4px',
+                  marginBottom: '6px',
+                  transition: 'all 0.15s'
                 }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#e2e8f0'; e.currentTarget.style.color = '#0f172a'; }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#f1f5f9'; e.currentTarget.style.color = '#475569'; }}
+                title="Deschide profilul complet"
               >
-                {(currentUser?.username || currentUser?.email || 'U')[0].toUpperCase()}
-              </div>
-              <div style={{ overflow: 'hidden' }}>
-                <div
-                  style={{
-                    fontSize: '13px',
-                    fontWeight: '600',
-                    color: '#1e293b',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {currentUser?.username || 'User'}
-                </div>
-                <div
-                  style={{
-                    fontSize: '11px',
-                    color: '#94a3b8',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {currentUser?.email || ''}
-                </div>
+                <span>Profil</span>
+                <span style={{ fontSize: '10px' }}>↗</span>
               </div>
             </div>
 
-            {/* Menu items */}
-            <div style={{ padding: '6px 0' }}>
-              <button
-                onClick={() => {
-                  setProfileOpen(false);
-                  navigate('/calendar');
-                }}
-                style={{
-                  width: '100%',
-                  padding: '9px 16px',
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  color: '#1e293b',
-                  fontWeight: '600',
-                  textAlign: 'left',
-                  transition: 'background 0.1s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
-                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+            {/* Name + username + badges */}
+            <div style={{ padding: '0 16px 12px' }}>
+              <div
+                onClick={() => { setProfileOpen(false); navigate('/for-me'); }}
+                style={{ fontWeight: '800', fontSize: '16px', color: '#0f172a', letterSpacing: '-0.01em', cursor: 'pointer' }}
+                title="Deschide profilul complet"
               >
-                <span style={{ fontSize: '15px' }}>📅</span>
-                Calendar
-              </button>
+                {displayName || username}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>@{username}</span>
+                <span style={{ fontSize: '11px', color: '#cbd5e1' }}>•</span>
+                <span style={{ fontSize: '10px', color: accentColor, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em', backgroundColor: `${accentColor}15`, padding: '1px 6px', borderRadius: '8px' }}>
+                  {role}
+                </span>
+              </div>
+
+              {/* Badges line ca pe Discord */}
+              <div style={{ display: 'flex', gap: '6px', marginTop: '8px', alignItems: 'center' }}>
+                <span title="Administrator Workspace" style={{ fontSize: '14px', cursor: 'default' }}>🛡️</span>
+                <span title="Cont Verificat" style={{ fontSize: '14px', cursor: 'default' }}>✓</span>
+                <span title="Developer IS" style={{ fontSize: '14px', cursor: 'default' }}>💻</span>
+                <span title="Membru Activ Echipă" style={{ fontSize: '14px', cursor: 'default' }}>⭐</span>
+                <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: 'auto', fontWeight: '600' }}>
+                  📅 {memberSince}
+                </span>
+              </div>
+
+              {/* Bio motto dacă există */}
+              {bio && (
+                <div style={{
+                  marginTop: '8px',
+                  fontSize: '11px',
+                  color: '#475569',
+                  fontStyle: 'italic',
+                  lineHeight: 1.3,
+                  backgroundColor: '#f8fafc',
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid #f1f5f9',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}>
+                  💬 {bio}
+                </div>
+              )}
+            </div>
+
+            {/* Divider */}
+            <div style={{ height: '1px', backgroundColor: '#f1f5f9', margin: '0 16px' }} />
+
+            {/* Menu items (Discord style cu acordion inline fără ferestre plutitoare în stânga) */}
+            <div style={{ padding: '8px', borderBottomLeftRadius: '15px', borderBottomRightRadius: '15px' }}>
+
+              {/* Edit Profile button */}
               <button
-                onClick={() => {
-                  setProfileOpen(false);
-                  navigate('/tasks');
-                }}
-                style={{
-                  width: '100%',
-                  padding: '9px 16px',
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  color: '#1e293b',
-                  fontWeight: '500',
-                  textAlign: 'left',
-                  transition: 'background 0.1s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
-                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                onClick={() => { setProfileOpen(false); navigate('/for-me'); }}
+                style={discordMenuItemStyle}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
               >
-                <span style={{ fontSize: '15px' }}>✅</span>
-                Tasks
+                <span style={{ fontSize: '15px', width: '20px', textAlign: 'center' }}>✏️</span>
+                <span style={{ flex: 1, fontWeight: '600' }}>Editează Profilul</span>
+                <span style={{ color: '#cbd5e1', fontSize: '14px' }}>›</span>
               </button>
-              <button
-                onClick={() => {
-                  setProfileOpen(false);
-                  navigate('/settings');
-                }}
-                style={{
-                  width: '100%',
-                  padding: '9px 16px',
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  color: '#1e293b',
-                  fontWeight: '500',
-                  textAlign: 'left',
-                  transition: 'background 0.1s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
-                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+
+              {/* Status row trigger cu flyout în STÂNGA (ca pe Discord) */}
+              <div
+                style={{ position: 'relative' }}
+                onMouseEnter={() => setShowStatus(true)}
+                onMouseLeave={() => setShowStatus(false)}
               >
-                <span style={{ fontSize: '15px' }}>⚙️</span>
-                Settings
-              </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowStatus(s => !s);
+                    setShowAccounts(false);
+                  }}
+                  style={{
+                    ...discordMenuItemStyle,
+                    backgroundColor: showStatus ? '#f8fafc' : 'transparent',
+                  }}
+                >
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: status.dot, flexShrink: 0 }} />
+                  <span style={{ flex: 1, fontWeight: '600' }}>{status.label}</span>
+                  <span style={{ color: showStatus ? '#5865F2' : '#cbd5e1', fontSize: '13px', fontWeight: '700' }}>‹</span>
+                </button>
+
+                {/* Sub-menu Flyout Status la STÂNGA (Stil Discord) */}
+                {showStatus && (
+                  <div
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                      position: 'absolute',
+                      top: '-10px',
+                      right: '100%',
+                      paddingRight: '6px', // Bridge ca mouse-ul să nu piardă hover-ul când trece în stânga
+                      zIndex: 10005,
+                      animation: 'flyoutIn 0.15s cubic-bezier(0.16, 1, 0.3, 1)',
+                    }}
+                  >
+                    <div style={{
+                      width: '230px',
+                      backgroundColor: '#ffffff',
+                      borderRadius: '12px',
+                      border: '1px solid #cbd5e1',
+                      boxShadow: '0 12px 36px rgba(0,0,0,0.18)',
+                      padding: '6px',
+                    }}>
+                      <div style={{ padding: '6px 10px', fontSize: '10px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Schimbă Statusul
+                      </div>
+                      {STATUS_LIST.map(s => {
+                        const isSel = status.id === s.id;
+                        return (
+                          <div
+                            key={s.id}
+                            onClick={() => {
+                              pickStatus(s);
+                              setShowStatus(false);
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px',
+                              padding: '8px 10px',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              backgroundColor: isSel ? '#f1f5f9' : 'transparent',
+                              transition: 'background 0.1s ease',
+                            }}
+                            onMouseEnter={e => { if (!isSel) e.currentTarget.style.backgroundColor = '#f8fafc'; }}
+                            onMouseLeave={e => { if (!isSel) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                          >
+                            <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: s.dot, flexShrink: 0 }} />
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: isSel ? '700' : '600', fontSize: '12px', color: isSel ? '#0f172a' : '#334155' }}>
+                                {s.label}
+                              </div>
+                              <div style={{ fontSize: '10px', color: '#94a3b8' }}>{s.desc}</div>
+                            </div>
+                            {isSel && <span style={{ color: '#5865F2', fontWeight: '800', fontSize: '12px' }}>✓</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Switch Accounts row trigger (inline, curat) */}
+              <div>
+                <button
+                  onClick={() => {
+                    setShowAccounts(a => !a);
+                    setShowStatus(false);
+                  }}
+                  style={{
+                    ...discordMenuItemStyle,
+                    backgroundColor: showAccounts ? '#f8fafc' : 'transparent',
+                  }}
+                >
+                  <span style={{ fontSize: '14px', width: '20px', textAlign: 'center' }}>👥</span>
+                  <span style={{ flex: 1, fontWeight: '600' }}>Schimbă Cont</span>
+                  <span style={{ color: showAccounts ? '#5865F2' : '#94a3b8', fontSize: '11px', fontWeight: '700' }}>
+                    {showAccounts ? '▴' : '▾'}
+                  </span>
+                </button>
+
+                {/* Sub-menu Switch Accounts Expandat INLINE */}
+                {showAccounts && (
+                  <div style={{
+                    backgroundColor: '#f8fafc',
+                    borderRadius: '10px',
+                    border: '1px solid #e2e8f0',
+                    padding: '6px',
+                    margin: '4px 0 6px',
+                  }}>
+                    <div style={{ padding: '4px 8px 6px', fontSize: '10px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Conturi Active
+                    </div>
+                    {/* Cont curent */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      backgroundColor: '#ffffff',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                    }}>
+                      <div style={{
+                        width: '26px', height: '26px', borderRadius: '50%',
+                        overflow: 'hidden', backgroundColor: accentColor,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#fff', fontSize: '11px', fontWeight: '700', flexShrink: 0
+                      }}>
+                        {avatar
+                          ? <img src={avatar} alt="av" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : initial
+                        }
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: '700', fontSize: '12px', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {username}
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#16a34a', fontWeight: '600' }}>
+                          ● Conectat
+                        </div>
+                      </div>
+                      <span style={{ color: '#5865F2', fontWeight: '800', fontSize: '12px' }}>✓</span>
+                    </div>
+
+                    <div style={{ height: '1px', backgroundColor: '#e2e8f0', margin: '6px 0' }} />
+
+                    <button
+                      onClick={handleLogout}
+                      style={{
+                        ...discordMenuItemStyle,
+                        fontSize: '12px',
+                        padding: '6px 8px',
+                        color: '#475569',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.backgroundColor = '#ffffff'}
+                      onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <span style={{ fontSize: '13px' }}>➕</span>
+                      <span style={{ flex: 1 }}>Conectează alt cont</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ height: '1px', backgroundColor: '#f1f5f9', margin: '4px 0' }} />
+
+              {/* Nav links */}
+              {[
+                { icon: '📅', label: 'Calendar & Ședințe', path: '/calendar' },
+                { icon: '✅', label: 'Task-uri Kanban',    path: '/tasks' },
+                { icon: '⚙️', label: 'Setări Workspace',   path: '/settings' },
+              ].map(item => (
+                <button
+                  key={item.path}
+                  onClick={() => { setProfileOpen(false); navigate(item.path); }}
+                  style={discordMenuItemStyle}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                >
+                  <span style={{ fontSize: '14px', width: '20px', textAlign: 'center' }}>{item.icon}</span>
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                </button>
+              ))}
+
+              <div style={{ height: '1px', backgroundColor: '#f1f5f9', margin: '4px 0' }} />
+
+              {/* Logout */}
               <button
                 onClick={handleLogout}
                 style={{
-                  width: '100%',
-                  padding: '9px 16px',
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  cursor: 'pointer',
-                  fontSize: '13px',
+                  ...discordMenuItemStyle,
                   color: '#ef4444',
-                  fontWeight: '500',
-                  textAlign: 'left',
-                  transition: 'background 0.1s',
+                  fontWeight: '600'
                 }}
-                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#fef2f2')}
-                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
               >
-                <span style={{ fontSize: '15px' }}>🚪</span>
-                Logout
+                <span style={{ fontSize: '14px', width: '20px', textAlign: 'center' }}>🚪</span>
+                <span>Deconectare</span>
               </button>
             </div>
           </div>
@@ -971,13 +1196,20 @@ const acceptBtnStyle = {
   transition: 'background 0.15s',
 };
 
-const declineBtnStyle = {
-  padding: '4px 14px',
-  backgroundColor: '#f1f5f9',
-  color: '#64748b',
-  border: '1px solid #e2e8f0',
-  borderRadius: '6px',
+const discordMenuItemStyle = {
+  width: '100%',
+  padding: '8px 10px',
+  backgroundColor: 'transparent',
+  border: 'none',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
   cursor: 'pointer',
-  fontSize: '12px',
-  transition: 'background 0.15s',
+  fontSize: '13px',
+  color: '#334155',
+  fontWeight: '500',
+  textAlign: 'left',
+  borderRadius: '8px',
+  transition: 'all 0.1s ease',
+  boxSizing: 'border-box',
 };
