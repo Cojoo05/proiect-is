@@ -1,9 +1,14 @@
 package com.proiect.is.proiect_is.controller;
 
+import com.proiect.is.proiect_is.DTO.AppNotificationRequestDTO;
+import com.proiect.is.proiect_is.DTO.AppNotificationResponseDTO;
+import com.proiect.is.proiect_is.mapper.AppNotificationMapper;
 import com.proiect.is.proiect_is.model.AppNotification;
 import com.proiect.is.proiect_is.model.User;
 import com.proiect.is.proiect_is.repository.AppNotificationRepository;
 import com.proiect.is.proiect_is.repository.UserRepository;
+import com.proiect.is.proiect_is.service.AppNotificationService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -13,96 +18,139 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 /**
- * Controller REST pentru sistemul de notificări în aplicație.
+ * Controller REST Enterprise pentru gestionarea fluxului de notificări în aplicație
+ * și distribuirea alertelor în timp real prin WebSocket (STOMP).
  *
- * Endpoint-uri principale:
- *  GET  /api/notifications/user/{userId}          – toate notificările unui user
- *  GET  /api/notifications/user/{userId}/unread   – doar cele necitite
- *  GET  /api/notifications/user/{userId}/count    – număr notificări necitite
- *  POST /api/notifications                        – creează o notificare nouă
- *  POST /api/notifications/calendar-invite        – creează invitații calendar pentru mai mulți useri
- *  PUT  /api/notifications/{id}/read              – marchează o notificare ca citită
- *  PUT  /api/notifications/user/{userId}/read-all – marchează toate ca citite
- *  DELETE /api/notifications/{id}                 – șterge o notificare
+ * Oferă suport complet pentru:
+ * <ul>
+ *   <li>Notificări pentru invitații în calendar și apeluri Google Meet</li>
+ *   <li>Alerte de sistem și sarcini alocate</li>
+ *   <li>Numărare dinamică a notificărilor necitite pentru bara superioară (TopBar)</li>
+ *   <li>Marcare ca citite individual sau în masă</li>
+ *   <li>Endpoint-uri DTO serializate cu timp relativ ("Acum 5 minute")</li>
+ * </ul>
+ *
+ * @author alexcimpean20
+ * @version 2.0
+ * @since 2026-11-22
  */
 @RestController
 @RequestMapping("/api/notifications")
 @CrossOrigin(origins = "*")
 public class AppNotificationController {
 
-    @Autowired
-    private AppNotificationRepository notificationRepository;
+    private final AppNotificationRepository notificationRepository;
+    private final UserRepository userRepository;
+    private final SimpMessagingTemplate messagingTemplate;
+    private final AppNotificationService notificationService;
+    private final AppNotificationMapper notificationMapper;
 
     @Autowired
-    private UserRepository userRepository;
+    public AppNotificationController(
+            AppNotificationRepository notificationRepository,
+            UserRepository userRepository,
+            @Autowired(required = false) SimpMessagingTemplate messagingTemplate,
+            AppNotificationService notificationService,
+            AppNotificationMapper notificationMapper) {
+        this.notificationRepository = notificationRepository;
+        this.userRepository = userRepository;
+        this.messagingTemplate = messagingTemplate;
+        this.notificationService = notificationService;
+        this.notificationMapper = notificationMapper;
+    }
 
-    @Autowired(required = false)
-    private SimpMessagingTemplate messagingTemplate;
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 1. Endpoint-uri de Citire Notificări
+    // ─────────────────────────────────────────────────────────────────────────────
 
-    // ── GET: toate notificările unui utilizator ────────────────────────────────
-
+    /**
+     * Returnează toate notificările unui utilizator, ordonate descrescător după data emiterii.
+     *
+     * @param userId ID-ul utilizatorului
+     * @return 200 OK cu lista de entități AppNotification
+     */
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<AppNotification>> getAllForUser(@PathVariable Long userId) {
-        List<AppNotification> notifications =
-                notificationRepository.findByRecipientUserIdOrderByCreatedAtDesc(userId);
+        List<AppNotification> notifications = notificationService.getAllForUser(userId);
         return ResponseEntity.ok(notifications);
     }
 
-    // ── GET: notificările NECITITE ale unui utilizator ────────────────────────
+    /**
+     * Returnează notificările utilizatorului formatate ca DTO îmbogățit cu proprietatea 'timeAgo'.
+     *
+     * @param userId ID-ul utilizatorului
+     * @return 200 OK cu lista de AppNotificationResponseDTO
+     */
+    @GetMapping("/dto/user/{userId}")
+    public ResponseEntity<List<AppNotificationResponseDTO>> getAllDTOsForUser(@PathVariable Long userId) {
+        List<AppNotificationResponseDTO> dtos = notificationService.getAllDTOsForUser(userId);
+        return ResponseEntity.ok(dtos);
+    }
 
+    /**
+     * Returnează doar notificările necitite ale unui utilizator.
+     *
+     * @param userId ID-ul utilizatorului
+     * @return 200 OK cu lista de notificări necitite
+     */
     @GetMapping("/user/{userId}/unread")
     public ResponseEntity<List<AppNotification>> getUnreadForUser(@PathVariable Long userId) {
-        List<AppNotification> unread =
-                notificationRepository.findByRecipientUserIdAndIsReadFalseOrderByCreatedAtDesc(userId);
+        List<AppNotification> unread = notificationService.getUnreadForUser(userId);
         return ResponseEntity.ok(unread);
     }
 
-    // ── GET: numărul de notificări necitite ───────────────────────────────────
-
+    /**
+     * Returnează numărul de notificări necitite pentru afișarea insignei (badge) pe clopoțelul din TopBar.
+     *
+     * @param userId ID-ul utilizatorului
+     * @return Harta cu proprietatea "unreadCount"
+     */
     @GetMapping("/user/{userId}/count")
     public ResponseEntity<Map<String, Long>> getUnreadCount(@PathVariable Long userId) {
-        Long count = notificationRepository.countUnreadByUserId(userId);
+        Long count = notificationService.getUnreadCount(userId);
         Map<String, Long> result = new HashMap<>();
         result.put("unreadCount", count != null ? count : 0L);
         return ResponseEntity.ok(result);
     }
 
-    // ── POST: creează o singură notificare ────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 2. Creare Notificări & Distribuție WebSocket
+    // ─────────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Creează o nouă notificare și o distribuie în timp real prin WebSocket.
+     *
+     * @param notification Entitatea notificării
+     * @return 200 OK cu notificarea persistată sau 400 Bad Request
+     */
     @PostMapping
     public ResponseEntity<AppNotification> createNotification(@RequestBody AppNotification notification) {
         if (notification.getRecipientUserId() == null || notification.getTitle() == null) {
             return ResponseEntity.badRequest().build();
         }
-        if (notification.getCreatedAt() == null) {
-            notification.setCreatedAt(LocalDateTime.now());
-        }
-        if (notification.getIsRead() == null) {
-            notification.setIsRead(false);
-        }
-        if (notification.getType() == null) {
-            notification.setType("general");
-        }
-
-        AppNotification saved = notificationRepository.save(notification);
-
-        // Trimite notificare în timp real prin WebSocket dacă e disponibil
-        if (messagingTemplate != null) {
-            try {
-                messagingTemplate.convertAndSend(
-                    "/topic/users/" + notification.getRecipientUserId() + "/notifications",
-                    saved
-                );
-            } catch (Exception ignored) {}
-        }
-
+        AppNotification saved = notificationService.createNotification(notification);
         return ResponseEntity.ok(saved);
     }
 
-    // ── POST: invitații calendar pentru mai mulți utilizatori ─────────────────
-    // Payload: { eventId, eventTitle, eventDate, eventStartTime, meetLink,
-    //            senderUserId, senderName, attendeeEmails: ["a@b.com", ...] }
+    /**
+     * Creează o nouă notificare validată prin DTO.
+     *
+     * @param requestDTO Corpul cererii validat cu @Valid
+     * @return 200 OK cu AppNotificationResponseDTO
+     */
+    @PostMapping("/dto")
+    public ResponseEntity<AppNotificationResponseDTO> createNotificationDTO(@Valid @RequestBody AppNotificationRequestDTO requestDTO) {
+        AppNotificationResponseDTO created = notificationService.createNotificationFromDTO(requestDTO);
+        return ResponseEntity.ok(created);
+    }
 
+    /**
+     * Creează și expediază invitații de calendar către mai mulți colegi prin adresele lor de email.
+     * Caută fiecare utilizator în baza de date și generează notificarea + transmiterea WebSocket.
+     *
+     * @param payload Datele invitației
+     * @return Harta cu numărul de invitații trimise și eventualele adrese negăsite
+     */
     @PostMapping("/calendar-invite")
     public ResponseEntity<Map<String, Object>> sendCalendarInvites(
             @RequestBody Map<String, Object> payload) {
@@ -139,16 +187,14 @@ public class AppNotificationController {
             if (email == null || email.isBlank()) continue;
             String trimmedEmail = email.trim().toLowerCase();
 
-            // Căutăm utilizatorul după email în baza de date
             Optional<User> userOpt = userRepository.findByEmail(trimmedEmail);
 
             if (userOpt.isPresent()) {
                 User recipient = userOpt.get();
 
-                // Evităm să trimitem notificare senderului în sine
                 if (senderUserId != null && recipient.getId().equals(senderUserId)) continue;
 
-                String notifTitle = "📅 Invitatie: " + eventTitle;
+                String notifTitle = "📅 Invitație: " + eventTitle;
                 String notifMsg = (senderName != null ? senderName : "Cineva") +
                         " te-a invitat la \"" + eventTitle + "\"" +
                         (eventDate != null ? " pe " + eventDate : "") +
@@ -172,7 +218,6 @@ public class AppNotificationController {
                 AppNotification saved = notificationRepository.save(notif);
                 sentCount++;
 
-                // Trimite prin WebSocket în timp real
                 if (messagingTemplate != null) {
                     try {
                         messagingTemplate.convertAndSend(
@@ -188,51 +233,71 @@ public class AppNotificationController {
 
         response.put("sent", sentCount);
         response.put("notFoundEmails", notFoundEmails);
-        response.put("message", sentCount + " notificari trimise cu succes");
+        response.put("message", sentCount + " notificări trimise cu succes.");
         return ResponseEntity.ok(response);
     }
 
-    // ── PUT: marchează o notificare ca citită ─────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 3. Marcare ca Citit și Curățare
+    // ─────────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Marchează o singură notificare ca fiind citită.
+     *
+     * @param id ID-ul notificării
+     * @return 200 OK dacă a fost actualizată sau 404 Not Found
+     */
     @PutMapping("/{id}/read")
     public ResponseEntity<Map<String, Object>> markAsRead(@PathVariable Long id) {
         int updated = notificationRepository.markAsReadById(id);
         Map<String, Object> result = new HashMap<>();
         if (updated > 0) {
             result.put("success", true);
-            result.put("message", "Notificare marcata ca citita");
+            result.put("message", "Notificare marcată ca citită.");
             return ResponseEntity.ok(result);
         }
         result.put("success", false);
-        result.put("message", "Notificarea nu a fost gasita");
+        result.put("message", "Notificarea nu a fost găsită.");
         return ResponseEntity.notFound().build();
     }
 
-    // ── PUT: marchează TOATE notificările unui user ca citite ─────────────────
-
+    /**
+     * Marchează toate notificările unui utilizator ca fiind citite.
+     *
+     * @param userId ID-ul utilizatorului
+     * @return 200 OK cu numărul de notificări actualizate
+     */
     @PutMapping("/user/{userId}/read-all")
     public ResponseEntity<Map<String, Object>> markAllAsRead(@PathVariable Long userId) {
-        int updated = notificationRepository.markAllAsReadByUserId(userId);
+        int updated = notificationService.markAllAsRead(userId);
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
         result.put("markedCount", updated);
-        result.put("message", updated + " notificari marcate ca citite");
+        result.put("message", updated + " notificări marcate ca citite.");
         return ResponseEntity.ok(result);
     }
 
-    // ── DELETE: șterge o notificare ───────────────────────────────────────────
-
+    /**
+     * Șterge definitiv o notificare după ID.
+     *
+     * @param id ID-ul notificării
+     * @return 204 No Content dacă a fost ștearsă sau 404 Not Found
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteNotification(@PathVariable Long id) {
-        if (!notificationRepository.existsById(id)) {
+        boolean deleted = notificationService.deleteNotification(id);
+        if (!deleted) {
             return ResponseEntity.notFound().build();
         }
-        notificationRepository.deleteById(id);
         return ResponseEntity.noContent().build();
     }
 
-    // ── DELETE: șterge toate notificările citite ale unui user ───────────────
-
+    /**
+     * Șterge în masă toate notificările citite ale unui utilizator.
+     *
+     * @param userId ID-ul utilizatorului
+     * @return 200 OK cu numărul de notificări șterse
+     */
     @DeleteMapping("/user/{userId}/clear-read")
     public ResponseEntity<Map<String, Object>> clearReadNotifications(@PathVariable Long userId) {
         List<AppNotification> all = notificationRepository.findByRecipientUserIdOrderByCreatedAtDesc(userId);
